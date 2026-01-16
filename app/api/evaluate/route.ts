@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { getQuestionById } from '@/lib/data';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+
 
 export async function POST(request: NextRequest) {
+
+    const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+    });
+
     try {
         const formData = await request.formData();
         const audioFile = formData.get('file') as File;
