@@ -84,7 +84,7 @@ export class SpacedRepetitionManager {
         const now = Date.now();
         const dueCards: CardProgress[] = [];
 
-        for (const card of this.progress.values()) {
+        for (const card of Array.from(this.progress.values())) {
             if (card.nextReview <= now && card.status !== 'known') {
                 dueCards.push(card);
             }
@@ -109,7 +109,7 @@ export class SpacedRepetitionManager {
         let learning = 0;
         let newCards = 0;
 
-        for (const card of this.progress.values()) {
+        for (const card of Array.from(this.progress.values())) {
             if (card.status === 'known') known++;
             else if (card.status === 'learning') learning++;
             else newCards++;
