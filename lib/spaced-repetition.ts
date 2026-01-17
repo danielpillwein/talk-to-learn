@@ -46,6 +46,7 @@ export class SpacedRepetitionManager {
     private saveProgress() {
         if (typeof window === 'undefined') return;
 
+        // Map zu Objekt konvertieren für JSON Storage
         const obj = Object.fromEntries(this.progress.entries());
         localStorage.setItem(this.storageKey, JSON.stringify(obj));
     }
@@ -54,7 +55,8 @@ export class SpacedRepetitionManager {
         const card = this.progress.get(questionId);
         if (card) {
             card.status = 'known';
-            card.nextReview = Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 Jahr in der Zukunft
+            // 1 Jahr in Zukunft
+            card.nextReview = Date.now() + 365 * 24 * 60 * 60 * 1000;
             card.reviewCount++;
             this.saveProgress();
         }
@@ -64,7 +66,8 @@ export class SpacedRepetitionManager {
         const card = this.progress.get(questionId);
         if (card) {
             card.status = 'learning';
-            card.nextReview = Date.now() + 10 * 60 * 1000; // 10 Minuten
+            // 10 Minuten
+            card.nextReview = Date.now() + 10 * 60 * 1000;
             card.reviewCount++;
             this.saveProgress();
         }
@@ -74,7 +77,8 @@ export class SpacedRepetitionManager {
         const card = this.progress.get(questionId);
         if (card) {
             card.status = 'learning';
-            card.nextReview = Date.now() + 2 * 60 * 1000; // 2 Minuten
+            // 2 Minuten (verkürzt, damit man es beim Testen schneller merkt)
+            card.nextReview = Date.now() + 2 * 60 * 1000;
             card.reviewCount++;
             this.saveProgress();
         }
@@ -82,26 +86,33 @@ export class SpacedRepetitionManager {
 
     getNextQuestion(): number | null {
         const now = Date.now();
-        const dueCards: CardProgress[] = [];
+        const allCards = Array.from(this.progress.values());
 
-        for (const card of Array.from(this.progress.values())) {
-            if (card.nextReview <= now && card.status !== 'known') {
-                dueCards.push(card);
-            }
+        // 1. Suche nach fälligen Wiederholungen (Priorität 1!)
+        // Filter: Status ist NICHT 'known' UND die Zeit ist abgelaufen (nextReview <= now)
+        // UND Status ist NICHT 'new' (die behandeln wir separat zufällig)
+        const dueReviews = allCards.filter(card =>
+            card.status === 'learning' && card.nextReview <= now
+        );
+
+        // Wenn Wiederholungen fällig sind, nimm die, die am längsten wartet
+        if (dueReviews.length > 0) {
+            dueReviews.sort((a, b) => a.nextReview - b.nextReview);
+            return dueReviews[0].questionId;
         }
 
-        if (dueCards.length === 0) return null;
+        // 2. Wenn keine Wiederholungen fällig sind, nimm NEUE Karten
+        const newCards = allCards.filter(card => card.status === 'new');
 
-        // Prioritize: new > learning, dann nach nextReview
-        dueCards.sort((a, b) => {
-            if (a.status !== b.status) {
-                if (a.status === 'new') return -1;
-                if (b.status === 'new') return 1;
-            }
-            return a.nextReview - b.nextReview;
-        });
+        if (newCards.length > 0) {
+            // HIER IST DIE ÄNDERUNG FÜR RANDOMISIERUNG:
+            // Wähle eine zufällige Karte aus den neuen Karten
+            const randomIndex = Math.floor(Math.random() * newCards.length);
+            return newCards[randomIndex].questionId;
+        }
 
-        return dueCards[0].questionId;
+        // Wenn weder fällige Reviews noch neue Karten da sind -> null (Fertig oder Warten)
+        return null;
     }
 
     getStats() {
@@ -112,7 +123,7 @@ export class SpacedRepetitionManager {
         for (const card of Array.from(this.progress.values())) {
             if (card.status === 'known') known++;
             else if (card.status === 'learning') learning++;
-            else newCards++;
+            else newCards++; // new
         }
 
         return { known, learning, new: newCards };

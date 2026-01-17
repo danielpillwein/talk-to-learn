@@ -42,19 +42,35 @@ export async function POST(request: NextRequest) {
         }
 
         // Step C: Evaluate with GPT-4o-mini
-        const evaluationPrompt = `Frage: ${question.question}
-Musterantwort: ${question.modelAnswer}
-User-Antwort: ${userAnswer}
+        // Sparsamer, aber präziser Prompt
+        // Prompt Update: Tolerant bei Sprache, streng bei falschen Fakten
+        // Prompt Update: Toleranz bei Variablen, weichere Bewertung, fixes Feedback-Format
+        // Prompt Update: Dynamisches, inhaltliches Feedback (keine Textbausteine)
+        const systemPrompt = `Rolle: Wohlwollender Mathe-Tutor.
+        Kontext: Audio-Transkript vs. Formale Definition.
 
-Bewerte hart aber fair auf Inhalt. Output JSON only: { "score": number (0-10), "feedback": string (max 1 Satz) }.`;
+        Regeln:
+        1. VARIABLE TOLERANCE: Ignoriere Groß-/Kleinschreibung (User sagt "A", meint "a"). Phonetische Ähnlichkeit zählt.
+        2. FAKTEN-CHECK: Sei milde bei ungenauen Formulierungen, aber streng bei falschen mathematischen Behauptungen.
+
+        Anweisung für das "feedback" Feld (NATÜRLICHE SPRACHE):
+        Generiere einen individuellen Satz basierend auf dem INHALT der User-Antwort:
+        - Wenn der INHALT KORREKT ist: Bestätige dies kurz und motivierend (z.B. "Gute Erklärung", "Das trifft den Kern", "Absolut richtig"). Variiere den Wortlaut.
+        - Wenn der INHALT TEILWEISE RICHTIG ist: Bestätige den korrekten Teil, aber korrigiere sofort den Fehler (z.B. "Der erste Teil stimmt, aber es muss [Korrektur] heißen").
+        - Wenn der INHALT FALSCH ist: Sage klar, dass es nicht stimmt, und nenne kurz die richtige Lösung.
+
+        Output JSON: { "score": 0-10, "feedback": "Max 1-2 kurze Sätze auf Deutsch." }`;
+
+        const evaluationPrompt = `Frage: ${question.question}
+        Muster: ${question.modelAnswer}
+        User: ${userAnswer}`;
 
         const completion = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
             messages: [
                 {
                     role: 'system',
-                    content:
-                        'Du bist ein strenger aber fairer Prüfer. Bewerte die Antworten präzise und gib konstruktives Feedback.',
+                    content: systemPrompt,
                 },
                 {
                     role: 'user',
@@ -62,7 +78,7 @@ Bewerte hart aber fair auf Inhalt. Output JSON only: { "score": number (0-10), "
                 },
             ],
             response_format: { type: 'json_object' },
-            temperature: 0.3,
+            temperature: 0.3, // Leicht erhöht, damit er bei Umschreibungen flexibler ist
         });
 
         const result = JSON.parse(completion.choices[0].message.content || '{}');
