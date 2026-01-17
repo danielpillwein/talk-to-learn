@@ -8,35 +8,68 @@ export interface Question {
     modelAnswer: string;
 }
 
-let questionsCache: Question[] | null = null;
+export interface FileMeta {
+    filename: string;
+    totalQuestions: number;
+}
 
-function loadQuestions(): Question[] {
-    if (questionsCache) {
-        return questionsCache;
+// Cache: Dateiname -> Fragen-Array
+const questionsCache: Record<string, Question[]> = {};
+
+function getCsvPath(filename: string): string {
+    // Sicherheits-Check gegen Directory Traversal
+    const safeName = path.basename(filename);
+    return path.join(process.cwd(), 'data', safeName);
+}
+
+function loadQuestionsForFile(filename: string): Question[] {
+    if (questionsCache[filename]) {
+        return questionsCache[filename];
     }
 
-    const csvPath = path.join(process.cwd(), 'data', 'Anki_Übungstest_2.csv');
-    const csvContent = fs.readFileSync(csvPath, 'utf-8');
+    const filePath = getCsvPath(filename);
 
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`File not found: ${filename}`);
+    }
+
+    const csvContent = fs.readFileSync(filePath, 'utf-8');
     const parsed = Papa.parse<string[]>(csvContent, {
         delimiter: ';',
         skipEmptyLines: true,
     });
 
-    questionsCache = parsed.data.map((row, index) => ({
+    const questions = parsed.data.map((row, index) => ({
         id: index,
         question: row[0]?.trim() || '',
         modelAnswer: row[1]?.trim() || '',
-    }));
+    })).filter(q => q.question && q.modelAnswer);
 
-    return questionsCache;
+    questionsCache[filename] = questions;
+    return questions;
 }
 
-export function getQuestions(): Question[] {
-    return loadQuestions();
+export function getAvailableFiles(): FileMeta[] {
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) return [];
+
+    const files = fs.readdirSync(dataDir).filter(f => f.endsWith('.csv'));
+
+    return files.map(filename => {
+        // Wir laden kurz die Fragen, um die Anzahl zu zählen (wird gecached)
+        const questions = loadQuestionsForFile(filename);
+        return {
+            filename,
+            totalQuestions: questions.length
+        };
+    });
 }
 
-export function getQuestionById(id: number): Question | undefined {
-    const questions = loadQuestions();
+export function getQuestions(filename: string): Question[] {
+    return loadQuestionsForFile(filename);
+}
+
+export function getQuestionById(filename: string, id: number): Question | undefined {
+    const questions = loadQuestionsForFile(filename);
     return questions.find((q) => q.id === id);
 }

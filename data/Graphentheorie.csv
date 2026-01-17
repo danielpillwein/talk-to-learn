@@ -1,0 +1,36 @@
+Was ist der Graph einer Relation?;Die graphische Darstellung einer Relation, bei der Elemente als Punkte und Relationselemente als Kanten dargestellt werden.
+Was ist ein Graph \(G\)?;Ein Graph \(G=(V,E)\) besteht aus einer Knotenmenge \(V\) und einer Kantenmenge \(E\).
+Was ist der Unterschied zwischen einem gerichteten und einem ungerichteten Graphen?;Bei gerichteten Graphen sind Kanten geordnete Paare, bei ungerichteten ungeordnete Paare.
+Was ist eine Schleife in einem Graphen?;Eine Kante, die einen Knoten mit sich selbst verbindet.
+Was ist eine Mehrfachkante?;Mehrere Kanten zwischen demselben Knotenpaar.
+Wann heißt ein Graph schlicht?;Wenn er weder Schleifen noch Mehrfachkanten enthält.
+Was sind adjazente Knoten?;Zwei Knoten, die durch eine Kante verbunden sind.
+Was ist der Grad eines Knotens in einem ungerichteten Graphen?;Die Anzahl der an den Knoten angrenzenden Kanten.
+Was ist der Eingangsgrad eines Knotens?;Die Anzahl der in den Knoten hineinführenden Kanten.
+Was ist der Ausgangsgrad eines Knotens?;Die Anzahl der vom Knoten ausgehenden Kanten.
+Was ist eine Kantenfolge?;Eine Folge von Kanten, bei der aufeinanderfolgende Kanten einen gemeinsamen Endknoten haben.
+Was ist die Länge einer Kantenfolge?;Die Anzahl der enthaltenen Kanten.
+Was ist ein Kantenzug?;Eine Kantenfolge, in der keine Kante mehrfach vorkommt.
+Was ist ein Weg (Pfad)?;Ein Kantenzug, in dem kein Knoten mehrfach vorkommt.
+Was ist ein Kreis in einem ungerichteten Graphen?;Ein geschlossener Weg mit mindestens einer Kante.
+Was ist ein Zyklus in einem gerichteten Graphen?;Ein geschlossener gerichteter Weg mit paarweise verschiedenen Knoten.
+Wann heißt ein ungerichteter Graph zusammenhängend?;Wenn zwischen je zwei Knoten ein Weg existiert.
+Wann heißt ein gerichteter Graph stark zusammenhängend?;Wenn zwischen jedem Knotenpaar Wege in beide Richtungen existieren.
+Wann heißt ein gerichteter Graph schwach zusammenhängend?;Wenn der zugrunde liegende ungerichtete Graph zusammenhängend ist.
+Wann heißt ein Graph Wald?;Wenn er schlicht, ungerichtet und kreisfrei ist.
+Wann heißt ein Wald ein Baum?;Wenn er zusätzlich zusammenhängend ist.
+Was ist ein spannender Baum eines Graphen?;Ein Baum, der alle Knoten des Graphen enthält.
+Was ist ein minimaler Spannbaum?;Ein spannender Baum mit minimaler Summe der Kantengewichte.
+Was ist die Grundidee des Kruskal-Algorithmus?;Kanten werden nach aufsteigendem Gewicht sortiert und kreisfrei hinzugefügt.
+Wann terminiert der Kruskal-Algorithmus?;Wenn genau \(|V|-1\) Kanten ausgewählt wurden.
+Was berechnet der Dijkstra-Algorithmus?;Die kürzesten Wege von einem Startknoten zu allen anderen Knoten.
+Welche Voraussetzung hat der Dijkstra-Algorithmus?;Alle Kantengewichte müssen nicht-negativ sein.
+Wann heißt ein Graph eulerisch?;Wenn es einen geschlossenen Kantenzug gibt, der jede Kante genau einmal enthält.
+Wann heißt ein Graph hamiltonsch?;Wenn es einen Kreis gibt, der jeden Knoten genau einmal enthält.
+Was ist ein bipartiter Graph?;Ein Graph, dessen Knotenmenge sich in zwei disjunkte Mengen zerlegen lässt, sodass keine Kante innerhalb einer Menge liegt.
+Warum ist der Kruskal-Algorithmus ein Greedy-Algorithmus?;Weil er in jedem Schritt die aktuell leichteste zulässige Kante auswählt.
+Welche Eigenschaft garantiert die Korrektheit von Kruskal?;Die Schnitt-Eigenschaft minimaler Spannbäume.
+Was ist ein kürzester Weg in einem Graphen?;Ein Weg mit minimaler Summe der Kantengewichte.
+Was ist die Grundidee des Dijkstra-Algorithmus?;Schrittweise Bestimmung der kürzesten Distanzen vom Startknoten aus.
+Warum funktioniert Dijkstra nicht mit negativen Kantengewichten?;Weil bereits festgelegte Distanzen sonst später noch verkleinert werden könnten.
+Was ist eine Prioritätswarteschlange im Dijkstra-Algorithmus?;Eine Datenstruktur zur effizienten Auswahl des Knotens mit minimaler Distanz.

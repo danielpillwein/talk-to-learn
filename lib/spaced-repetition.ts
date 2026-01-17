@@ -10,10 +10,12 @@ export interface CardProgress {
 }
 
 export class SpacedRepetitionManager {
-    private storageKey = 'talk-to-learn-progress';
+    private storageKey: string;
     private progress: Map<number, CardProgress>;
 
-    constructor(totalQuestions: number) {
+    // NEU: filename wird übergeben, um eindeutigen Storage Key zu erzeugen
+    constructor(totalQuestions: number, filename: string) {
+        this.storageKey = `talk-to-learn-progress-${filename}`;
         this.progress = this.loadProgress();
 
         // Initialize any new questions
@@ -45,17 +47,42 @@ export class SpacedRepetitionManager {
 
     private saveProgress() {
         if (typeof window === 'undefined') return;
-
-        // Map zu Objekt konvertieren für JSON Storage
         const obj = Object.fromEntries(this.progress.entries());
         localStorage.setItem(this.storageKey, JSON.stringify(obj));
+    }
+
+    // Hilfsmethode: Statische Abfrage der Stats für die Übersicht (ohne Instanziierung der ganzen Logik)
+    static getStoredStats(filename: string, totalQuestions: number) {
+        if (typeof window === 'undefined') return { known: 0, learning: 0, new: totalQuestions };
+
+        const key = `talk-to-learn-progress-${filename}`;
+        const stored = localStorage.getItem(key);
+
+        let known = 0;
+        let learning = 0;
+
+        if (stored) {
+            try {
+                const data = JSON.parse(stored);
+                Object.values(data).forEach((card: any) => {
+                    if (card.status === 'known') known++;
+                    if (card.status === 'learning') learning++;
+                });
+            } catch (e) { console.error(e) }
+        }
+
+        // Alles was nicht known oder learning ist, ist 'new'
+        // Aber Achtung: Wenn neue Fragen zur CSV hinzugefügt wurden, sind die noch nicht im Storage.
+        // Daher: New = Total - (Known + Learning)
+        const newCards = Math.max(0, totalQuestions - known - learning);
+
+        return { known, learning, new: newCards };
     }
 
     markAsKnown(questionId: number) {
         const card = this.progress.get(questionId);
         if (card) {
             card.status = 'known';
-            // 1 Jahr in Zukunft
             card.nextReview = Date.now() + 365 * 24 * 60 * 60 * 1000;
             card.reviewCount++;
             this.saveProgress();
@@ -66,7 +93,6 @@ export class SpacedRepetitionManager {
         const card = this.progress.get(questionId);
         if (card) {
             card.status = 'learning';
-            // 10 Minuten
             card.nextReview = Date.now() + 10 * 60 * 1000;
             card.reviewCount++;
             this.saveProgress();
@@ -77,7 +103,6 @@ export class SpacedRepetitionManager {
         const card = this.progress.get(questionId);
         if (card) {
             card.status = 'learning';
-            // 2 Minuten (verkürzt, damit man es beim Testen schneller merkt)
             card.nextReview = Date.now() + 2 * 60 * 1000;
             card.reviewCount++;
             this.saveProgress();
@@ -88,30 +113,21 @@ export class SpacedRepetitionManager {
         const now = Date.now();
         const allCards = Array.from(this.progress.values());
 
-        // 1. Suche nach fälligen Wiederholungen (Priorität 1!)
-        // Filter: Status ist NICHT 'known' UND die Zeit ist abgelaufen (nextReview <= now)
-        // UND Status ist NICHT 'new' (die behandeln wir separat zufällig)
         const dueReviews = allCards.filter(card =>
             card.status === 'learning' && card.nextReview <= now
         );
 
-        // Wenn Wiederholungen fällig sind, nimm die, die am längsten wartet
         if (dueReviews.length > 0) {
             dueReviews.sort((a, b) => a.nextReview - b.nextReview);
             return dueReviews[0].questionId;
         }
 
-        // 2. Wenn keine Wiederholungen fällig sind, nimm NEUE Karten
         const newCards = allCards.filter(card => card.status === 'new');
-
         if (newCards.length > 0) {
-            // HIER IST DIE ÄNDERUNG FÜR RANDOMISIERUNG:
-            // Wähle eine zufällige Karte aus den neuen Karten
             const randomIndex = Math.floor(Math.random() * newCards.length);
             return newCards[randomIndex].questionId;
         }
 
-        // Wenn weder fällige Reviews noch neue Karten da sind -> null (Fertig oder Warten)
         return null;
     }
 
@@ -123,7 +139,7 @@ export class SpacedRepetitionManager {
         for (const card of Array.from(this.progress.values())) {
             if (card.status === 'known') known++;
             else if (card.status === 'learning') learning++;
-            else newCards++; // new
+            else newCards++;
         }
 
         return { known, learning, new: newCards };

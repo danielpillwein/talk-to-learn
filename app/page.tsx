@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Mic, Square, Loader2, CheckCircle2, RotateCcw, XCircle, RefreshCw } from 'lucide-react';
+import { Mic, Square, Loader2, CheckCircle2, RotateCcw, XCircle, RefreshCw, FileText, ArrowLeft } from 'lucide-react';
 import { SpacedRepetitionManager } from '@/lib/spaced-repetition';
 
 interface Question {
@@ -21,14 +21,28 @@ interface EvaluationResult {
     question: string;
 }
 
+interface FileStats {
+    filename: string;
+    totalQuestions: number;
+    known: number;
+    learning: number;
+    new: number;
+}
+
 export default function Home() {
+    // --- STATE: SELECTION MODE ---
+    const [availableFiles, setAvailableFiles] = useState<FileStats[]>([]);
+    const [selectedFile, setSelectedFile] = useState<string | null>(null);
+    const [isLoadingFiles, setIsLoadingFiles] = useState(true);
+
+    // --- STATE: LEARNING MODE ---
     const [questions, setQuestions] = useState<Question[]>([]);
     const [currentQuestionId, setCurrentQuestionId] = useState<number | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const [isEvaluating, setIsEvaluating] = useState(false);
     const [result, setResult] = useState<EvaluationResult | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
     const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
     const [stats, setStats] = useState({ known: 0, learning: 0, new: 0 });
 
@@ -36,45 +50,89 @@ export default function Home() {
     const audioChunksRef = useRef<Blob[]>([]);
     const srManagerRef = useRef<SpacedRepetitionManager | null>(null);
 
+    // 1. Dateien laden und Stats berechnen beim Start
     useEffect(() => {
-        const loadQuestions = async () => {
+        const fetchFiles = async () => {
             try {
-                const response = await fetch('/api/questions');
-                if (!response.ok) {
-                    throw new Error('Failed to load questions');
-                }
+                const response = await fetch('/api/files');
+                if (!response.ok) throw new Error('Failed to list files');
+                const data = await response.json();
+
+                // Stats für jede Datei aus LocalStorage holen
+                const filesWithStats = data.files.map((f: { filename: string, totalQuestions: number }) => {
+                    const stats = SpacedRepetitionManager.getStoredStats(f.filename, f.totalQuestions);
+                    return {
+                        ...f,
+                        ...stats
+                    };
+                });
+
+                setAvailableFiles(filesWithStats);
+            } catch (err) {
+                console.error(err);
+                setError('Konnte Lernsets nicht laden.');
+            } finally {
+                setIsLoadingFiles(false);
+            }
+        };
+        fetchFiles();
+    }, []);
+
+    // 2. Fragen laden wenn Datei gewählt wurde
+    useEffect(() => {
+        if (!selectedFile) return;
+
+        const loadQuestions = async () => {
+            setIsLoadingQuestions(true);
+            setError(null);
+            try {
+                const response = await fetch(`/api/questions?file=${encodeURIComponent(selectedFile)}`);
+                if (!response.ok) throw new Error('Failed to load questions');
                 const data = await response.json();
                 setQuestions(data.questions);
 
-                // Initialize SR Manager
-                const manager = new SpacedRepetitionManager(data.questions.length);
+                // Manager für dieses File initialisieren
+                const manager = new SpacedRepetitionManager(data.questions.length, selectedFile);
                 srManagerRef.current = manager;
 
-                // Get first question
                 const nextId = manager.getNextQuestion();
                 setCurrentQuestionId(nextId);
-
-                // Update stats
                 setStats(manager.getStats());
+                setResult(null);
+
             } catch (err) {
                 setError('Fehler beim Laden der Fragen');
                 console.error(err);
             } finally {
-                setIsLoading(false);
+                setIsLoadingQuestions(false);
             }
         };
 
         loadQuestions();
-    }, []);
+    }, [selectedFile]);
 
-    // Trigger MathJax rendering when question or result changes
+    // MathJax Trigger
     useEffect(() => {
         if (typeof window !== 'undefined' && (window as any).MathJax) {
-            (window as any).MathJax.typesetPromise?.().catch((err: any) => console.error('MathJax error:', err));
+            (window as any).MathJax.typesetPromise?.().catch((err: any) => console.error(err));
         }
     }, [currentQuestionId, questions, result]);
 
-    const currentQuestion = currentQuestionId !== null ? questions[currentQuestionId] : null;
+
+    // --- HELPERS ---
+    const formatFileName = (name: string) => {
+        return name.replace('.csv', '').replace(/_/g, ' ');
+    };
+
+    const handleBackToSelection = () => {
+        setSelectedFile(null);
+        setQuestions([]);
+        setCurrentQuestionId(null);
+        setResult(null);
+        setError(null);
+        // Reload file list to update stats
+        window.location.reload();
+    };
 
     const requestMicPermission = async () => {
         try {
@@ -84,8 +142,7 @@ export default function Home() {
             setMicPermission('granted');
         } catch (err) {
             setMicPermission('denied');
-            setError('Mikrofon-Berechtigung verweigert. Bitte erlaube den Zugriff in deinen Browser-Einstellungen.');
-            console.error(err);
+            setError('Mikrofon-Berechtigung verweigert.');
         }
     };
 
@@ -94,29 +151,23 @@ export default function Home() {
             setError(null);
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mediaRecorder = new MediaRecorder(stream);
-
+            mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
 
             mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunksRef.current.push(event.data);
-                }
+                if (event.data.size > 0) audioChunksRef.current.push(event.data);
             };
 
             mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, {
-                    type: 'audio/webm',
-                });
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 await evaluateAnswer(audioBlob);
                 stream.getTracks().forEach((track) => track.stop());
             };
 
             mediaRecorder.start();
-            mediaRecorderRef.current = mediaRecorder;
             setIsRecording(true);
         } catch (err) {
             setError('Fehler beim Zugriff auf das Mikrofon');
-            console.error(err);
         }
     };
 
@@ -128,25 +179,21 @@ export default function Home() {
     };
 
     const evaluateAnswer = async (audioBlob: Blob) => {
-        if (currentQuestionId === null) return;
-
+        if (currentQuestionId === null || !selectedFile) return;
         setIsEvaluating(true);
         setError(null);
 
         const formData = new FormData();
         formData.append('file', audioBlob, 'recording.webm');
         formData.append('questionId', currentQuestionId.toString());
+        formData.append('filename', selectedFile); // Wichtig!
 
         try {
             const response = await fetch('/api/evaluate', {
                 method: 'POST',
                 body: formData,
             });
-
-            if (!response.ok) {
-                throw new Error('Evaluation failed');
-            }
-
+            if (!response.ok) throw new Error('Evaluation failed');
             const data = await response.json();
             setResult(data);
         } catch (err) {
@@ -160,62 +207,113 @@ export default function Home() {
     const handleReview = (type: 'known' | 'review' | 'wrong') => {
         if (!srManagerRef.current || currentQuestionId === null) return;
 
-        if (type === 'known') {
-            srManagerRef.current.markAsKnown(currentQuestionId);
-        } else if (type === 'review') {
-            srManagerRef.current.markAsReview(currentQuestionId);
-        } else {
-            srManagerRef.current.markAsWrong(currentQuestionId);
-        }
+        if (type === 'known') srManagerRef.current.markAsKnown(currentQuestionId);
+        else if (type === 'review') srManagerRef.current.markAsReview(currentQuestionId);
+        else srManagerRef.current.markAsWrong(currentQuestionId);
 
-        // Get next question
         const nextId = srManagerRef.current.getNextQuestion();
         setCurrentQuestionId(nextId);
         setResult(null);
         setError(null);
-
-        // Update stats
         setStats(srManagerRef.current.getStats());
     };
 
     const handleReset = () => {
         if (!srManagerRef.current) return;
-
-        if (confirm('Möchtest du wirklich den gesamten Fortschritt zurücksetzen?')) {
+        if (confirm('Wirklich den Fortschritt für DIESES Lernset zurücksetzen?')) {
             srManagerRef.current.reset();
-            window.location.reload();
+            const manager = srManagerRef.current;
+            setCurrentQuestionId(manager.getNextQuestion());
+            setStats(manager.getStats());
+            setResult(null);
         }
     };
 
-    if (isLoading) {
+    const currentQuestion = currentQuestionId !== null ? questions[currentQuestionId] : null;
+
+    // --- VIEW 1: FILE SELECTION ---
+    if (!selectedFile) {
         return (
-            <div className="min-h-screen flex items-center justify-center p-4">
-                <Card className="w-full max-w-2xl">
-                    <CardContent className="p-6">
-                        <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span>Lade Fragen...</span>
+            <div className="min-h-screen bg-slate-50 p-4">
+                <div className="max-w-md mx-auto space-y-6">
+                    <div className="text-center pt-8">
+                        <h1 className="text-3xl font-bold text-slate-900">Talk to Learn</h1>
+                        <p className="text-slate-500">Wähle ein Lernset aus</p>
+                    </div>
+
+                    {isLoadingFiles ? (
+                        <div className="flex justify-center p-8"><Loader2 className="animate-spin text-slate-400" /></div>
+                    ) : (
+                        <div className="space-y-3">
+                            {availableFiles.map((file) => (
+                                <Card
+                                    key={file.filename}
+                                    className="hover:border-slate-400 transition-colors cursor-pointer active:scale-[0.99]"
+                                    onClick={() => setSelectedFile(file.filename)}
+                                >
+                                    <CardContent className="p-4 flex flex-col gap-2">
+                                        <div className="flex items-start gap-3">
+                                            <FileText className="h-6 w-6 text-slate-600 mt-1 shrink-0" />
+                                            <div className="min-w-0 flex-1">
+                                                {/* Mobile Friendly: break-words und kein truncate für den Titel, falls lang */}
+                                                <h3 className="font-semibold text-lg text-slate-900 break-words leading-tight">
+                                                    {formatFileName(file.filename)}
+                                                </h3>
+                                            </div>
+                                        </div>
+
+                                        {/* Stats Row */}
+                                        <div className="flex gap-3 text-sm mt-1 pl-9 flex-wrap">
+                                            <div className="flex items-center gap-1 text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                                                <CheckCircle2 className="h-3 w-3" /> {file.known}
+                                            </div>
+                                            <div className="flex items-center gap-1 text-yellow-700 bg-yellow-50 px-2 py-0.5 rounded-full">
+                                                <RotateCcw className="h-3 w-3" /> {file.learning}
+                                            </div>
+                                            <div className="flex items-center gap-1 text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                <XCircle className="h-3 w-3" /> {file.new}
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                            {availableFiles.length === 0 && (
+                                <div className="text-center text-muted-foreground p-8">Keine Dateien in /data gefunden.</div>
+                            )}
                         </div>
-                    </CardContent>
-                </Card>
+                    )}
+                    {error && <Alert variant="destructive" className="mt-4"><AlertDescription>{error}</AlertDescription></Alert>}
+                </div>
             </div>
         );
     }
 
-    if (!currentQuestion) {
+    // --- VIEW 2: LOADING QUESTIONS ---
+    if (isLoadingQuestions) {
         return (
-            <div className="min-h-screen flex items-center justify-center p-4">
-                <Card className="w-full max-w-2xl">
-                    <CardContent className="p-6">
-                        <div className="text-center space-y-4">
-                            <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
-                            <h2 className="text-2xl font-bold">Alle Fragen bearbeitet! 🎉</h2>
-                            <p className="text-muted-foreground">
-                                Du hast alle fälligen Fragen durchgearbeitet. Komm später wieder für Wiederholungen.
-                            </p>
-                            <Button onClick={handleReset} variant="outline">
-                                <RefreshCw className="mr-2 h-4 w-4" />
-                                Fortschritt zurücksetzen
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3 text-slate-500">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <p>Lade {formatFileName(selectedFile)}...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // --- VIEW 3: ALL DONE ---
+    if (currentQuestionId === null) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+                <Card className="w-full max-w-md text-center">
+                    <CardContent className="p-8 space-y-6">
+                        <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
+                        <h2 className="text-2xl font-bold">Set erledigt! 🎉</h2>
+                        <div className="flex gap-3 justify-center">
+                            <Button onClick={handleBackToSelection} variant="outline">
+                                <ArrowLeft className="mr-2 h-4 w-4" /> Zurück
+                            </Button>
+                            <Button onClick={handleReset} variant="ghost">
+                                <RefreshCw className="mr-2 h-4 w-4" /> Reset
                             </Button>
                         </div>
                     </CardContent>
@@ -224,192 +322,134 @@ export default function Home() {
         );
     }
 
+    // --- VIEW 4: LEARNING ---
     return (
-        <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-8">
-            <div className="max-w-4xl mx-auto space-y-6">
-                {/* Header with Stats and Reset */}
-                <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1">
-                        <h1 className="text-4xl font-bold text-slate-900 mb-2">Talk to Learn</h1>
-                        <div className="flex flex-wrap gap-4 text-sm">
-                            <div className="flex items-center gap-2">
-                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                <span className="text-slate-600">
-                                    <strong className="text-green-700">{stats.known}</strong> gelernt
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <RotateCcw className="h-4 w-4 text-yellow-500" />
-                                <span className="text-slate-600">
-                                    <strong className="text-yellow-700">{stats.learning}</strong> zu wiederholen
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <XCircle className="h-4 w-4 text-slate-400" />
-                                <span className="text-slate-600">
-                                    <strong className="text-slate-700">{stats.new}</strong> neu
-                                </span>
-                            </div>
+        <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+            <div className="max-w-3xl mx-auto space-y-6">
+                {/* Header */}
+                <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                            <Button variant="ghost" size="icon" onClick={handleBackToSelection} className="shrink-0">
+                                <ArrowLeft className="h-5 w-5" />
+                            </Button>
+                            <h1 className="text-xl font-bold text-slate-900 truncate">
+                                {formatFileName(selectedFile)}
+                            </h1>
+                        </div>
+                        <Button onClick={handleReset} variant="ghost" size="sm" className="shrink-0 text-slate-400 hover:text-red-500">
+                            <RefreshCw className="h-4 w-4" />
+                        </Button>
+                    </div>
+
+                    {/* Stats Bar */}
+                    <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-white p-2 rounded border border-slate-200 flex items-center justify-center gap-2 text-sm text-green-700">
+                            <CheckCircle2 className="h-4 w-4" /> <b>{stats.known}</b>
+                        </div>
+                        <div className="bg-white p-2 rounded border border-slate-200 flex items-center justify-center gap-2 text-sm text-yellow-700">
+                            <RotateCcw className="h-4 w-4" /> <b>{stats.learning}</b>
+                        </div>
+                        <div className="bg-white p-2 rounded border border-slate-200 flex items-center justify-center gap-2 text-sm text-slate-600">
+                            <XCircle className="h-4 w-4" /> <b>{stats.new}</b>
                         </div>
                     </div>
-                    <Button onClick={handleReset} variant="outline" size="sm">
-                        <RefreshCw className="h-4 w-4" />
-                    </Button>
                 </div>
 
-                {/* Question Card */}
+                {/* Question */}
                 <Card>
-                    <CardHeader>
-                        <CardTitle className="text-xl">Frage</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle className="text-sm text-slate-500 uppercase">Frage</CardTitle></CardHeader>
                     <CardContent>
-                        <p className="text-lg leading-relaxed">{currentQuestion.question}</p>
+                        <p className="text-xl font-medium leading-relaxed">{currentQuestion?.question}</p>
                     </CardContent>
                 </Card>
 
-                {/* Recording Controls */}
-                {!result && (
+                {/* Interaction */}
+                {!result ? (
                     <Card>
-                        <CardContent className="p-6">
-                            <div className="flex flex-col items-center gap-4">
-                                {micPermission === 'prompt' && (
-                                    <div className="text-center space-y-4">
-                                        <p className="text-sm text-muted-foreground">
-                                            Für die Aufnahme benötigen wir Zugriff auf dein Mikrofon.
-                                        </p>
-                                        <Button
-                                            size="lg"
-                                            onClick={requestMicPermission}
-                                            className="w-full md:w-auto"
-                                        >
-                                            <Mic className="mr-2 h-5 w-5" />
-                                            Mikrofon-Zugriff erlauben
-                                        </Button>
-                                    </div>
-                                )}
-
-                                {micPermission === 'granted' && !isRecording && !isEvaluating && (
-                                    <Button
-                                        size="lg"
-                                        onClick={startRecording}
-                                        className="w-full md:w-auto"
-                                    >
-                                        <Mic className="mr-2 h-5 w-5" />
-                                        Aufnahme starten
-                                    </Button>
-                                )}
-
-                                {isRecording && (
-                                    <Button
-                                        size="lg"
-                                        onClick={stopRecording}
-                                        variant="destructive"
-                                        className="w-full md:w-auto animate-pulse"
-                                    >
-                                        <Square className="mr-2 h-5 w-5" />
-                                        Aufnahme beenden
-                                    </Button>
-                                )}
-
-                                {isEvaluating && (
-                                    <div className="flex items-center gap-2 text-muted-foreground">
-                                        <Loader2 className="h-5 w-5 animate-spin" />
-                                        <span>Wird ausgewertet...</span>
-                                    </div>
-                                )}
-                            </div>
+                        <CardContent className="p-6 flex flex-col items-center gap-4">
+                            {micPermission === 'prompt' ? (
+                                <Button size="lg" onClick={requestMicPermission} className="w-full">
+                                    <Mic className="mr-2 h-5 w-5" /> Mikrofon erlauben
+                                </Button>
+                            ) : !isRecording && !isEvaluating ? (
+                                <Button size="lg" onClick={startRecording} className="w-full py-8 text-lg rounded-xl">
+                                    <Mic className="mr-2 h-6 w-6" /> Antworten
+                                </Button>
+                            ) : isRecording ? (
+                                <Button size="lg" onClick={stopRecording} variant="destructive" className="w-full py-8 text-lg rounded-xl animate-pulse">
+                                    <Square className="mr-2 h-6 w-6" /> Stop
+                                </Button>
+                            ) : (
+                                <div className="flex items-center gap-2 text-slate-500 py-4">
+                                    <Loader2 className="animate-spin" /> Auswertung...
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
-                )}
-
-                {/* Error Alert */}
-                {error && (
-                    <Alert variant="destructive">
-                        <AlertDescription>{error}</AlertDescription>
-                    </Alert>
-                )}
-
-                {/* Result Display */}
-                {result && (
-                    <div className="space-y-4">
-                        {/* Score Card */}
-                        <Card className={`border-2 ${result.score < 6
-                            ? 'border-red-500 bg-red-50'
-                            : result.score < 8
-                                ? 'border-yellow-500 bg-yellow-50'
-                                : 'border-green-500 bg-green-50'
-                            }`}>
-                            <CardContent className="p-8">
-                                <div className="text-center space-y-4">
-                                    <div>
-                                        <div className={`text-6xl font-bold ${result.score < 6
-                                            ? 'text-red-600'
-                                            : result.score < 8
-                                                ? 'text-yellow-600'
-                                                : 'text-green-600'
-                                            }`}>
-                                            {result.score}
-                                            <span className="text-3xl text-muted-foreground">/10</span>
-                                        </div>
-                                    </div>
-                                    <p className="text-lg text-slate-700">{result.feedback}</p>
-                                </div>
+                ) : (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+                        <Card className={`border-2 ${result.score >= 9 ? 'border-green-500 bg-green-50' : result.score < 4 ? 'border-red-500 bg-red-50' : 'border-yellow-500 bg-yellow-50'}`}>
+                            <CardContent className="p-6 text-center space-y-2">
+                                <div className="text-4xl font-black">{result.score}<span className="text-lg text-muted-foreground font-normal">/10</span></div>
+                                <p className="font-medium">{result.feedback}</p>
                             </CardContent>
                         </Card>
 
-                        {/* User Answer */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-lg">Deine Antwort</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-slate-700">{result.userAnswer}</p>
-                            </CardContent>
-                        </Card>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <Card className="bg-slate-50">
+                                <CardHeader className="pb-2"><CardTitle className="text-xs uppercase text-slate-500">Du</CardTitle></CardHeader>
+                                <CardContent className="text-sm">{result.userAnswer}</CardContent>
+                            </Card>
+                            <Card className="bg-slate-50">
+                                <CardHeader className="pb-2"><CardTitle className="text-xs uppercase text-slate-500">Lösung</CardTitle></CardHeader>
+                                <CardContent className="text-sm">{result.modelAnswer}</CardContent>
+                            </Card>
+                        </div>
 
-                        {/* Model Answer */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-lg">Musterantwort</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-slate-700">{result.modelAnswer}</p>
-                            </CardContent>
-                        </Card>
-
-                        {/* Anki-Style Review Buttons */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Review Buttons - Nebeneinander auf allen Geräten */}
+                        <div className="grid grid-cols-3 gap-2 pt-4">
+                            {/* Roter Button */}
                             <Button
                                 onClick={() => handleReview('wrong')}
-                                variant="destructive"
-                                className="h-auto py-4 flex flex-col gap-1"
+                                className="h-auto py-4 px-1 flex flex-col gap-2 bg-red-500 hover:bg-red-600 text-white shadow-md transition-all hover:scale-[1.02]"
                             >
-                                <XCircle className="h-5 w-5" />
-                                <span className="font-semibold">War falsch</span>
-                                <span className="text-xs opacity-90">in 2 Minuten</span>
+                                <XCircle className="h-6 w-6" />
+                                <div className="flex flex-col items-center leading-none gap-1">
+                                    <span className="text-base md:text-lg font-bold">War falsch</span>
+                                    <span className="text-xs md:text-sm font-medium opacity-90">in 2 Minuten</span>
+                                </div>
                             </Button>
 
+                            {/* Gelber Button (Outline) */}
                             <Button
                                 onClick={() => handleReview('review')}
                                 variant="outline"
-                                className="h-auto py-4 flex flex-col gap-1 border-2 border-yellow-500 hover:bg-yellow-50"
+                                className="h-auto py-4 px-1 flex flex-col gap-2 bg-white border-2 border-yellow-500 text-yellow-600 hover:bg-yellow-50 hover:text-yellow-700 hover:border-yellow-600 shadow-sm transition-all hover:scale-[1.02]"
                             >
-                                <RotateCcw className="h-5 w-5 text-yellow-600" />
-                                <span className="font-semibold text-yellow-700">Muss üben</span>
-                                <span className="text-xs text-yellow-600">in 10 Minuten</span>
+                                <RotateCcw className="h-6 w-6" />
+                                <div className="flex flex-col items-center leading-none gap-1">
+                                    <span className="text-base md:text-lg font-bold">Muss üben</span>
+                                    <span className="text-xs md:text-sm font-medium">in 10 Minuten</span>
+                                </div>
                             </Button>
 
+                            {/* Grüner Button */}
                             <Button
                                 onClick={() => handleReview('known')}
-                                className="h-auto py-4 flex flex-col gap-1 bg-green-600 hover:bg-green-700"
+                                className="h-auto py-4 px-1 flex flex-col gap-2 bg-green-600 hover:bg-green-700 text-white shadow-md transition-all hover:scale-[1.02]"
                             >
-                                <CheckCircle2 className="h-5 w-5" />
-                                <span className="font-semibold">Kann ich!</span>
-                                <span className="text-xs opacity-90">vorerst fertig</span>
+                                <CheckCircle2 className="h-6 w-6" />
+                                <div className="flex flex-col items-center leading-none gap-1">
+                                    <span className="text-base md:text-lg font-bold">Kann ich!</span>
+                                    <span className="text-xs md:text-sm font-medium opacity-90">vorerst fertig</span>
+                                </div>
                             </Button>
                         </div>
                     </div>
                 )}
+
+                {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
             </div>
         </main>
     );

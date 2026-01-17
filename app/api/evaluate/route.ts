@@ -4,61 +4,52 @@ import { getQuestionById } from '@/lib/data';
 
 export async function POST(request: Request) {
     try {
-        // 1. Daten aus dem Request holen
         const formData = await request.formData();
         const file = formData.get('file') as File;
         const questionId = formData.get('questionId') as string;
+        // NEU: Filename auslesen
+        const filename = formData.get('filename') as string;
 
-        if (!file || !questionId) {
-            return NextResponse.json({ error: 'Missing file or questionId' }, { status: 400 });
+        if (!file || !questionId || !filename) {
+            return NextResponse.json({ error: 'Missing file, questionId or filename' }, { status: 400 });
         }
 
-        // 2. Transkription mit GROQ (Whisper V3)
-        // Initialisiere Groq als OpenAI-kompatiblen Client
+        // 1. Transkription mit GROQ
         const groq = new OpenAI({
             apiKey: process.env.GROQ_API_KEY,
-            baseURL: 'https://api.groq.com/openai/v1', // WICHTIG: Die Groq URL
+            baseURL: 'https://api.groq.com/openai/v1',
         });
-
-        console.log('Starte Transkription mit Groq...');
 
         const transcription = await groq.audio.transcriptions.create({
             file: file,
-            model: 'whisper-large-v3', // Das aktuell beste Modell bei Groq
-            language: 'de',            // Verbessert die deutsche Erkennung massiv
+            model: 'whisper-large-v3',
+            language: 'de',
             response_format: 'json',
         });
 
         const userAnswer = transcription.text;
-        console.log("Transkript:", userAnswer);
 
-        // 3. Daten für die Bewertung laden
-        const question = getQuestionById(parseInt(questionId));
+        // 2. Frage laden (mit filename!)
+        const question = getQuestionById(filename, parseInt(questionId));
 
         if (!question) {
             return NextResponse.json({ error: 'Question not found' }, { status: 404 });
         }
 
-        // 4. Bewertung mit OPENAI (GPT-4o-mini)
-        // Wir nutzen hier den Standard-Client ohne baseURL Änderung
+        // 3. Bewertung mit OpenAI
         const openai = new OpenAI({
             apiKey: process.env.OPENAI_API_KEY,
         });
 
-        // Dein bewährter System-Prompt
         const systemPrompt = `Rolle: Wohlwollender Mathe-Tutor.
         Kontext: Audio-Transkript vs. Formale Definition.
-
         Regeln:
-        1. VARIABLE TOLERANCE: Ignoriere Groß-/Kleinschreibung (User sagt "A", meint "a"). Phonetische Ähnlichkeit zählt.
+        1. VARIABLE TOLERANCE: Ignoriere Groß-/Kleinschreibung. Phonetische Ähnlichkeit zählt.
         2. FAKTEN-CHECK: Sei milde bei ungenauen Formulierungen, aber streng bei falschen mathematischen Behauptungen.
-
         Anweisung für das "feedback" Feld (NATÜRLICHE SPRACHE):
-        Generiere einen individuellen Satz basierend auf dem INHALT der User-Antwort:
-        - Wenn der INHALT KORREKT ist: Bestätige dies kurz und motivierend.
-        - Wenn der INHALT TEILWEISE RICHTIG ist: Bestätige den korrekten Teil, aber korrigiere sofort den Fehler.
-        - Wenn der INHALT FALSCH ist: Sage klar, dass es nicht stimmt, und nenne kurz die richtige Lösung.
-
+        - INHALT KORREKT: Bestätige kurz und motivierend.
+        - TEILWEISE RICHTIG: Bestätige das Richtige, korrigiere den Fehler.
+        - FALSCH: Sage klar, dass es nicht stimmt und nenne die Lösung.
         Output JSON: { "score": 0-10, "feedback": "Max 1-2 kurze Sätze auf Deutsch." }`;
 
         const evaluationPrompt = `Frage: ${question.question}
@@ -86,7 +77,7 @@ export async function POST(request: Request) {
         });
 
     } catch (error: any) {
-        console.error('Error during processing:', error);
+        console.error('Error:', error);
         return NextResponse.json(
             { error: error.message || 'Internal Server Error' },
             { status: 500 }

@@ -1,0 +1,10 @@
+Was besagt die Additionsregel in der Kombinatorik?;Wenn eine Auswahl entweder auf A oder auf B fällt und A und B disjunkt sind, addieren sich die Möglichkeiten.
+Was besagt die Produktregel in der Kombinatorik?;Wenn eine Auswahl aus mehreren aufeinanderfolgenden Schritten besteht, multiplizieren sich die Möglichkeiten.
+Was ist eine Permutation?;Eine Anordnung aller Elemente einer Menge, bei der die Reihenfolge eine Rolle spielt.
+Was ist eine Permutation ohne Wiederholung?;Eine Anordnung, bei der jedes Element genau einmal vorkommt.
+Was ist eine Permutation mit Wiederholung?;Eine Anordnung, bei der Elemente mehrfach vorkommen dürfen.
+Was ist eine Kombination?;Eine Auswahl von Elementen aus einer Menge, bei der die Reihenfolge keine Rolle spielt.
+Was ist eine Kombination ohne Wiederholung?;Eine Auswahl von k verschiedenen Elementen aus n ohne Zurücklegen.
+Was ist eine Kombination mit Wiederholung?;Eine Auswahl von k Elementen aus n mit Zurücklegen.
+Was ist der Binomialkoeffizient \(\binom{n}{k}\)?;Die Anzahl der Möglichkeiten, k Elemente aus n ohne Reihenfolge auszuwählen.
+Wie ist der Binomialkoeffizient definiert?;\(\binom{n}{k} = \frac{n!}{k!(n-k)!}\).

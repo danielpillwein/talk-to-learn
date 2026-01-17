@@ -16,44 +16,22 @@ Was ist ein minimales Element?;Ein Element \( x \), für das es kein \( y \neq x
 Was ist ein maximales Element?;Ein Element \( x \), für das es kein \( y \neq x \) gibt mit \( xRy \) ("nichts darüber").
 Was ist das kleinste Element?;Ein Element \( x \), sodass für alle \( y \) gilt: \( xRy \) (es ist eindeutig).
 Was ist das größte Element?;Ein Element \( x \), sodass für alle \( y \) gilt: \( yRx \) (es ist eindeutig).
-Was ist eine Funktion \( f: A \to B \)?;Eine Relation, bei der es zu jedem \( a \in A \) genau ein \( b \in B \) gibt.
-Was ist das "Urbild" einer Funktion?;Die Menge aus A, für die gilt \( \exists b \in B: aRb \).
-Was ist das "Bild" einer Funktion?;Die Menge aus B, für die gilt \( \exists a \in A: aRb \).
-Wann ist eine Funktion injektiv?;Wenn verschiedene Elemente aus A immer auf verschiedene Elemente in B abgebildet werden (\( a_1 \neq a_2 \Rightarrow f(a_1) \neq f(a_2) \)).
-Wann ist eine Funktion surjektiv?;Wenn jedes Element aus B mindestens einmal als Funktionswert vorkommt.
-Wann ist eine Funktion bijektiv?;Wenn sie injektiv und surjektiv ist (jedes \( b \) wird von genau einem \( a \) getroffen).
-Was ist eine binäre Operation?;Eine Abbildung \( A \times A \to A \), die zwei Elementen ein neues zuordnet.
-Was bedeutet "Abgeschlossenheit" bei einer Operation?;Das Ergebnis der Verknüpfung liegt wieder in der Menge selbst.
 Was besagt das Assoziativgesetz?;\( (a \circ b) \circ c = a \circ (b \circ c) \).
 Was besagt das Kommutativgesetz?;\( a \circ b = b \circ a \).
 Was ist ein neutrales Element \( e \)?;Ein Element, das bei Verknüpfung nichts ändert: \( e \circ a = a \circ e = a \).
 Was ist ein inverses Element \( a' \) zu \( a \)?;Ein Element, das mit \( a \) verknüpft das neutrale Element ergibt: \( a \circ a' = e \).
 Was ist ein Gruppoid?;Eine Menge mit einer binären Operation (ohne weitere Gesetze).
-Was ist eine Halbgruppe?;Ein Gruppoid, das assoziativ ist.
 Was ist ein Monoid?;Eine Halbgruppe mit einem neutralen Element.
-Was ist eine Gruppe?;Ein Monoid, in dem jedes Element ein Inverses besitzt.
-Was ist eine abelsche Gruppe?;Eine Gruppe, die zusätzlich kommutativ ist.
-Was ist eine Untergruppe?;Eine Teilmenge einer Gruppe, die selbst eine Gruppe ist.
-Was sind die 3 Kriterien für eine Untergruppe?;1. Neutrales Element enthalten. 2. Abgeschlossenheit (\( a \circ b \in U \)). 3. Inverses enthalten (\( a^{-1} \in U \)).
 Was ist eine Linksnebenklasse \( a \circ U \)?;Die Menge \( \{a \circ u \mid u \in U\} \).
 Was besagt der Satz von Lagrange?;Die Ordnung einer Untergruppe teilt die Ordnung der gesamten Gruppe (\( |G| / |U| \)).
-Was ist der Index einer Untergruppe?;Die Anzahl der Nebenklassen von U in G.
-Was ist eine zyklische Gruppe?;Eine Gruppe, die von einem einzigen Element \( a \) erzeugt wird (\( \langle a \rangle = G \)).
-Was ist ein Gruppenhomomorphismus?;Eine Abbildung, die die Struktur erhält: \( \phi(a \circ b) = \phi(a) * \phi(b) \).
-Was ist der Kern eines Homomorphismus?;Die Menge aller Elemente aus \( G \), die auf das neutrale Element von \( H \) abgebildet werden.
-Was ist ein Ring?;Eine Menge mit zwei Operationen \( (+, \cdot) \): \( (R,+) \) ist abelsche Gruppe, \( (R,\cdot) \) ist Halbgruppe, Distributivgesetze gelten.
-Was ist ein Integritätsring?;Ein kommutativer Ring mit Eins, der keine Nullteiler hat.
-Was ist ein Körper?;Ein kommutativer Ring mit Eins (\( 1 \neq 0 \)), in dem jedes Element außer 0 ein multiplikatives Inverses hat.
-Was ist ein Verband?;Eine Struktur mit zwei Operationen \( (\land, \lor) \), die beide kommutative Halbgruppen sind und die Verschmelzungsgesetze erfüllen.
-Was sind die Verschmelzungsgesetze im Verband?;\( a = a \land (a \lor b) \) und \( a = a \lor (a \land b) \).
 Was ist eine Boole'sche Algebra?;Ein distributiver Verband, in dem es neutrale Elemente (0, 1) gibt und jedes Element ein Komplement hat.
 Welche Darstellungsformen von Relationen gibt es?;Pfeildiagramm, Tabelle (Matrixdarstellung) und Graph der Relation.
-Was ist der Graph einer Relation?;Die graphische Darstellung einer Relation, bei der Elemente als Punkte und Relationselemente als Kanten dargestellt werden.
 Was ist der Zusammenhang zwischen Äquivalenzrelationen und Partitionen?;Die Äquivalenzklassen einer Äquivalenzrelation bilden eine Partition der Grundmenge, und umgekehrt definiert jede Partition eine Äquivalenzrelation.
 Was ist der Unterschied zwischen einem minimalen und dem kleinsten Element?;Ein minimales Element hat kein kleineres Element unter sich, ein kleinstes Element ist kleiner als alle anderen und eindeutig.
 Was ist der Unterschied zwischen einem maximalen und dem größten Element?;Ein maximales Element hat kein größeres Element über sich, ein größtes Element ist größer als alle anderen und eindeutig.
 Was ist eine Rechtsnebenklasse \( U \circ a \)?;Die Menge \( \{u \circ a \mid u \in U\} \).
-Wie sind Potenzen \( a^n \) in einer Gruppe definiert?;Für \( n>0 \) als \( a^n=a\circ\ldots\circ a \), für \( n=0 \) als neutrales Element, für \( n<0 \) als \( (a^{-1})^{-n} \).
-Was ist das Bild eines Gruppenhomomorphismus?;Die Menge aller Elemente aus \( H \), die von mindestens einem Element aus \( G \) getroffen werden.
-Was ist ein kommutativer Ring?;Ein Ring, bei dem die Multiplikation kommutativ ist (\( a \cdot b = b \cdot a \)).
-Wann gilt bei einem Gruppenhomomorphismus \( \varphi \), dass er injektiv ist?;Genau dann, wenn der Kern nur aus dem neutralen Element besteht (\( \ker(\varphi)=\{e\} \)).
+Was sind Zusammenhangskomponenten?;Die maximal zusammenhängenden Teilgraphen eines Graphen.
+Was ist die Bedeutung von \(\binom{n}{k}\)?;Er gibt an, wie viele k-elementige Teilmengen eine n-elementige Menge hat.
+Was ist ein Algorithmus?;Eine endliche Folge eindeutig ausführbarer Schritte zur Lösung eines Problems.
+Was ist die Laufzeit eines Algorithmus?;Der Aufwand an Rechenschritten in Abhängigkeit von der Eingabegröße.
+Was ist die Grundidee eines Greedy-Algorithmus?;In jedem Schritt wird eine lokal optimale Entscheidung getroffen.
