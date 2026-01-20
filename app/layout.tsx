@@ -18,6 +18,8 @@ export default function RootLayout({
     return (
         <html lang="de">
             <head>
+                <!--Stats-->
+                <script defer src="https://cloud.umami.is/script.js" data-website-id="45361192-66d0-46ad-ba1e-c55cfdaa9d81"></script>
                 <Script
                     id="mathjax-config"
                     strategy="beforeInteractive"
