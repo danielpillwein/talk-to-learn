@@ -4,7 +4,7 @@ import "./globals.css";
 import Script from "next/script";
 import { Providers } from "./providers";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "Talk to Learn",
@@ -52,7 +52,7 @@ export default function RootLayout({
         />
       </head>
 
-      <body className={inter.className}>
+      <body className={inter.variable}>
         <Providers>{children}</Providers>
       </body>
     </html>

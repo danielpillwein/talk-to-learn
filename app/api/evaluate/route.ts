@@ -1,17 +1,23 @@
 import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { auth } from '@/lib/auth';
+import fs from 'fs';
+import path from 'path';
 
 export async function POST(request: Request) {
     try {
+        const session = await auth();
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
         const formData = await request.formData();
         const file = formData.get('file') as File;
         const questionId = formData.get('questionId') as string;
-        // NEU: Filename auslesen
-        const filename = formData.get('filename') as string;
+        const deckId = formData.get('deckId') as string;
 
-        if (!file || !questionId || !filename) {
-            return NextResponse.json({ error: 'Missing file, questionId or filename' }, { status: 400 });
+        if (!file || !questionId || !deckId) {
+            return NextResponse.json({ error: 'Missing file, questionId or deckId' }, { status: 400 });
         }
 
         // 1. Transkription mit GROQ
@@ -29,9 +35,9 @@ export async function POST(request: Request) {
 
         const userAnswer = transcription.text;
 
-        // 2. Frage laden (mit filename!)
+        // 2. Frage laden (mit deckId!)
         const deck = await db.deck.findUnique({
-            where: { sourceFilename: filename },
+            where: { id: deckId, ownerId: session.user.id },
             select: { id: true },
         });
 
@@ -63,16 +69,10 @@ export async function POST(request: Request) {
             apiKey: process.env.OPENAI_API_KEY,
         });
 
-        const systemPrompt = `Rolle: Wohlwollender Mathe-Tutor.
-        Kontext: Audio-Transkript vs. Formale Definition.
-        Regeln:
-        1. VARIABLE TOLERANCE: Ignoriere Groß-/Kleinschreibung. Phonetische Ähnlichkeit zählt.
-        2. FAKTEN-CHECK: Sei milde bei ungenauen Formulierungen, aber streng bei falschen mathematischen Behauptungen.
-        Anweisung für das "feedback" Feld (NATÜRLICHE SPRACHE):
-        - INHALT KORREKT: Bestätige kurz und motivierend.
-        - TEILWEISE RICHTIG: Bestätige das Richtige, korrigiere den Fehler.
-        - FALSCH: Sage klar, dass es nicht stimmt und nenne die Lösung.
-        Output JSON: { "score": 0-10, "feedback": "Max 1-2 kurze Sätze auf Deutsch." }`;
+        const systemPrompt = fs.readFileSync(
+            path.join(process.cwd(), 'prompts', 'evaluate.md'),
+            'utf-8'
+        );
 
         const evaluationPrompt = `Frage: ${question.question}
         Muster: ${question.modelAnswer}

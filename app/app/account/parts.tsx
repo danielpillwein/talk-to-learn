@@ -9,7 +9,7 @@ export function AccountActions() {
   return (
     <Button
       variant="outline"
-      className="w-full sm:w-auto"
+      className="w-full md:w-auto"
       onClick={() => signOut({ callbackUrl: "/" })}
     >
       Abmelden
@@ -29,7 +29,7 @@ export function AvatarBadge({
 
   if (!image || failed) {
     return (
-      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
         {initial ?? <User className="h-5 w-5" />}
       </span>
     );

@@ -8,7 +8,27 @@ const config: Config = {
         "./app/**/*.{js,ts,jsx,tsx,mdx}",
     ],
     theme: {
+        screens: {
+            sm: "640px",
+            md: "768px",
+            lg: "1024px",
+            xl: "1280px",
+        },
         extend: {
+            fontFamily: {
+                sans: ["var(--font-sans)"],
+            },
+            fontSize: {
+                sm: ["var(--font-size-sm)", { lineHeight: "var(--line-height-sm)" }],
+                base: ["var(--font-size-base)", { lineHeight: "var(--line-height-base)" }],
+                lg: ["var(--font-size-lg)", { lineHeight: "var(--line-height-lg)" }],
+                xl: ["var(--font-size-xl)", { lineHeight: "var(--line-height-xl)" }],
+                "2xl": ["var(--font-size-2xl)", { lineHeight: "var(--line-height-2xl)" }],
+                "3xl": ["var(--font-size-3xl)", { lineHeight: "var(--line-height-3xl)" }],
+                "4xl": ["var(--font-size-4xl)", { lineHeight: "var(--line-height-4xl)" }],
+                "5xl": ["var(--font-size-5xl)", { lineHeight: "var(--line-height-5xl)" }],
+                "6xl": ["var(--font-size-6xl)", { lineHeight: "var(--line-height-6xl)" }],
+            },
             colors: {
                 background: "hsl(var(--background))",
                 foreground: "hsl(var(--foreground))",
@@ -43,6 +63,18 @@ const config: Config = {
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",
                 ring: "hsl(var(--ring))",
+                success: {
+                    DEFAULT: "hsl(var(--success))",
+                    foreground: "hsl(var(--success-foreground))",
+                },
+                warning: {
+                    DEFAULT: "hsl(var(--warning))",
+                    foreground: "hsl(var(--warning-foreground))",
+                },
+                danger: {
+                    DEFAULT: "hsl(var(--danger))",
+                    foreground: "hsl(var(--danger-foreground))",
+                },
                 chart: {
                     "1": "hsl(var(--chart-1))",
                     "2": "hsl(var(--chart-2))",

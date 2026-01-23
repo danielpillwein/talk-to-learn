@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { auth } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
     try {
+        const session = await auth();
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
         const searchParams = request.nextUrl.searchParams;
-        const filename = searchParams.get('file');
+        const deckId = searchParams.get('deckId');
 
-        if (!filename) {
-            return NextResponse.json({ error: 'Filename is required' }, { status: 400 });
+        if (!deckId) {
+            return NextResponse.json({ error: 'deckId is required' }, { status: 400 });
         }
 
         const deck = await db.deck.findUnique({
-            where: { sourceFilename: filename },
-            select: { id: true },
+            where: { id: deckId, ownerId: session.user.id },
+            select: { id: true, title: true },
         });
 
         if (!deck) {
@@ -31,7 +36,7 @@ export async function GET(request: NextRequest) {
             modelAnswer: card.answer,
         }));
 
-        return NextResponse.json({ questions });
+        return NextResponse.json({ questions, deckTitle: deck.title });
     } catch (error) {
         console.error('Error loading questions:', error);
         return NextResponse.json(

@@ -24,6 +24,7 @@
         "openai": "^6.16.0",
         "package.json": "^2.0.1",
         "papaparse": "^5.5.3",
+        "pdf-parse": "^1.1.1",
         "react": "^18",
         "react-dom": "^18",
         "tailwind-merge": "^3.4.0",
