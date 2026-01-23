@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
-import { getQuestionById } from '@/lib/data';
+import { db } from '@/lib/db';
 
 export async function POST(request: Request) {
     try {
@@ -30,7 +30,29 @@ export async function POST(request: Request) {
         const userAnswer = transcription.text;
 
         // 2. Frage laden (mit filename!)
-        const question = getQuestionById(filename, parseInt(questionId));
+        const deck = await db.deck.findUnique({
+            where: { sourceFilename: filename },
+            select: { id: true },
+        });
+
+        if (!deck) {
+            return NextResponse.json({ error: 'Deck not found' }, { status: 404 });
+        }
+
+        const questionIndex = parseInt(questionId, 10);
+        if (Number.isNaN(questionIndex)) {
+            return NextResponse.json({ error: 'Invalid questionId' }, { status: 400 });
+        }
+
+        const card = await db.card.findMany({
+            where: { deckId: deck.id },
+            orderBy: { createdAt: 'asc' },
+            skip: questionIndex,
+            take: 1,
+            select: { question: true, answer: true },
+        });
+
+        const question = card[0];
 
         if (!question) {
             return NextResponse.json({ error: 'Question not found' }, { status: 404 });
@@ -72,7 +94,7 @@ export async function POST(request: Request) {
             score: result.score,
             feedback: result.feedback,
             userAnswer: userAnswer,
-            modelAnswer: question.modelAnswer,
+            modelAnswer: question.answer,
             question: question.question
         });
 

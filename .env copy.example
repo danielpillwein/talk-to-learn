@@ -1,3 +1,13 @@
-# OpenAI API Key
+# OpenAI API Key (set to the API key from https://platform.openai.com/api-keys)
 OPENAI_API_KEY=OPENAI_API_KEY
+# Groq API Key (set to the API key from https://console.groq.com/keys)
 GROQ_API_KEY=GROQ_API_KEY
+# Prisma DB URL for local SQLite (keep default unless you move the db file)
+DATABASE_URL="file:./dev.db"
+# NextAuth base URL for local dev
+NEXTAUTH_URL=http://localhost:3000
+# NextAuth secret (set to a long random string; e.g. output of `openssl rand -hex 32`)
+NEXTAUTH_SECRET=CHANGEME
+# Google OAuth (create at https://console.cloud.google.com/apis/credentials)
+GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET
