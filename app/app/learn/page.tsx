@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle2, FileText, Loader2, RotateCcw, User, XCircle } from 'lucide-react';
+import { ArrowPathIcon, DocumentTextIcon, UserIcon } from '@heroicons/react/24/outline';
+import { DocumentTextIcon as DocumentTextIconSolid, UserIcon as UserIconSolid } from '@heroicons/react/24/solid';
+import { IconSwap } from '@/components/ui/icon';
 import { SpacedRepetitionManager } from '@/lib/spaced-repetition';
 
 interface FileStats {
@@ -72,7 +74,9 @@ export default function LearnIndexPage() {
 
         return (
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                {user?.name?.charAt(0) ?? <User className="h-4 w-4" />}
+                {user?.name?.charAt(0) ?? (
+                    <IconSwap outline={UserIcon} solid={UserIconSolid} className="h-4 w-4" />
+                )}
             </span>
         );
     }, [user?.image, user?.name, avatarFailed]);
@@ -92,7 +96,7 @@ export default function LearnIndexPage() {
                     </div>
                     <Link
                         href="/app/account"
-                        className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card shadow-sm transition hover:border-foreground/20"
+                        className="group flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card shadow-sm transition hover:border-foreground/20"
                         aria-label="Account"
                     >
                         {avatarContent}
@@ -101,7 +105,7 @@ export default function LearnIndexPage() {
 
                 {isLoadingFiles ? (
                     <div className="flex justify-center rounded-3xl border border-border bg-card p-10 shadow-sm">
-                        <Loader2 className="animate-spin text-muted-foreground" />
+                        <ArrowPathIcon className="h-6 w-6 animate-spin text-muted-foreground" />
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -112,11 +116,15 @@ export default function LearnIndexPage() {
                             const newPct = Math.max(0, 100 - knownPct - learningPct);
 
                             return (
-                                <Link key={file.id} href={`/app/learn/${toSlug(file.id)}`}>
+                                <Link key={file.id} href={`/app/learn/${toSlug(file.id)}`} className="group">
                                     <Card className="cursor-pointer border-border bg-card shadow-sm transition hover:border-foreground/20 active:scale-[0.99]">
                                         <CardContent className="flex flex-col gap-4 p-5">
                                             <div className="flex items-start gap-3">
-                                                <FileText className="mt-1 h-6 w-6 shrink-0 text-muted-foreground" />
+                                                <IconSwap
+                                                    outline={DocumentTextIcon}
+                                                    solid={DocumentTextIconSolid}
+                                                    className="mt-1 h-6 w-6 shrink-0 text-muted-foreground group-hover:text-foreground"
+                                                />
                                                 <div className="min-w-0 flex-1">
                                                     <h3 className="break-words text-lg font-semibold leading-tight text-foreground">
                                                         {file.title}

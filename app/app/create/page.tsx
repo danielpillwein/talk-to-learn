@@ -8,7 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
-import { User } from "lucide-react";
+import { UserIcon } from "@heroicons/react/24/outline";
+import { UserIcon as UserIconSolid } from "@heroicons/react/24/solid";
+import { IconSwap } from "@/components/ui/icon";
 
 type CardDraft = {
   question: string;
@@ -159,7 +161,7 @@ export default function CreateDeckPage() {
           </div>
           <Link
             href="/app/account"
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background shadow-sm transition hover:border-foreground/20"
+            className="group flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background shadow-sm transition hover:border-foreground/20"
             aria-label="Account"
           >
             {user?.image && !avatarFailed ? (
@@ -171,7 +173,13 @@ export default function CreateDeckPage() {
               />
             ) : (
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                {user?.name?.charAt(0) ?? <User className="h-4 w-4" />}
+                {user?.name?.charAt(0) ?? (
+                  <IconSwap
+                    outline={UserIcon}
+                    solid={UserIconSolid}
+                    className="h-4 w-4"
+                  />
+                )}
               </span>
             )}
           </Link>

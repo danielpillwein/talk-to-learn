@@ -7,7 +7,25 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Mic, Square, Loader2, CheckCircle2, RotateCcw, XCircle, RefreshCw, ArrowLeft, User } from 'lucide-react';
+import {
+    ArrowLeftIcon,
+    ArrowPathIcon,
+    CheckCircleIcon,
+    MicrophoneIcon,
+    StopIcon,
+    UserIcon,
+    XCircleIcon,
+} from '@heroicons/react/24/outline';
+import {
+    ArrowLeftIcon as ArrowLeftIconSolid,
+    ArrowPathIcon as ArrowPathIconSolid,
+    CheckCircleIcon as CheckCircleIconSolid,
+    MicrophoneIcon as MicrophoneIconSolid,
+    StopIcon as StopIconSolid,
+    UserIcon as UserIconSolid,
+    XCircleIcon as XCircleIconSolid,
+} from '@heroicons/react/24/solid';
+import { IconSwap } from '@/components/ui/icon';
 import { SpacedRepetitionManager } from '@/lib/spaced-repetition';
 
 
@@ -266,7 +284,9 @@ export default function LearnDetailPage() {
 
         return (
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                {user?.name?.charAt(0) ?? <User className="h-4 w-4" />}
+                {user?.name?.charAt(0) ?? (
+                    <IconSwap outline={UserIcon} solid={UserIconSolid} className="h-4 w-4" />
+                )}
             </span>
         );
     }, [user?.image, user?.name, avatarFailed]);
@@ -275,7 +295,7 @@ export default function LearnDetailPage() {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <ArrowPathIcon className="h-8 w-8 animate-spin" />
                     <p>Lade Lernset...</p>
                 </div>
             </div>
@@ -287,14 +307,24 @@ export default function LearnDetailPage() {
             <div className="min-h-screen bg-background flex items-center justify-center p-4">
                 <Card className="w-full max-w-md text-center border-border bg-card">
                     <CardContent className="p-8 space-y-6">
-                        <CheckCircle2 className="h-16 w-16 text-success mx-auto" />
+                        <CheckCircleIcon className="h-16 w-16 text-success mx-auto" />
                         <h2 className="text-2xl font-bold">Set erledigt! 🎉</h2>
                         <div className="flex gap-3 justify-center">
-                            <Button onClick={handleBackToSelection} variant="outline">
-                                <ArrowLeft className="mr-2 h-4 w-4" /> Zurück
+                            <Button onClick={handleBackToSelection} variant="outline" className="group">
+                                <IconSwap
+                                    outline={ArrowLeftIcon}
+                                    solid={ArrowLeftIconSolid}
+                                    className="mr-2 h-4 w-4"
+                                />{' '}
+                                Zurück
                             </Button>
-                            <Button onClick={handleReset} variant="ghost">
-                                <RefreshCw className="mr-2 h-4 w-4" /> Reset
+                            <Button onClick={handleReset} variant="ghost" className="group">
+                                <IconSwap
+                                    outline={ArrowPathIcon}
+                                    solid={ArrowPathIconSolid}
+                                    className="mr-2 h-4 w-4"
+                                />{' '}
+                                Reset
                             </Button>
                         </div>
                     </CardContent>
@@ -309,8 +339,8 @@ export default function LearnDetailPage() {
                 <div className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-4 shadow-sm md:p-5">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div className="flex items-center gap-2 overflow-hidden">
-                            <Button variant="ghost" size="icon" onClick={handleBackToSelection} className="shrink-0">
-                                <ArrowLeft className="h-5 w-5" />
+                            <Button variant="ghost" size="icon" onClick={handleBackToSelection} className="group shrink-0">
+                                <IconSwap outline={ArrowLeftIcon} solid={ArrowLeftIconSolid} className="h-5 w-5" />
                             </Button>
                             <h1 className="text-xl font-bold text-foreground truncate">
                                 {deckTitle || 'Lernset'}
@@ -319,26 +349,26 @@ export default function LearnDetailPage() {
                         <div className="flex items-center gap-2">
                             <Link
                                 href="/app/account"
-                                className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-semibold text-foreground shadow-sm transition hover:border-foreground/20"
+                                className="group flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-semibold text-foreground shadow-sm transition hover:border-foreground/20"
                             >
                                 {avatarContent}
                                 <span className="hidden md:inline">Account</span>
                             </Link>
-                            <Button onClick={handleReset} variant="ghost" size="sm" className="shrink-0 text-muted-foreground hover:text-destructive">
-                                <RefreshCw className="h-4 w-4" />
+                            <Button onClick={handleReset} variant="ghost" size="sm" className="group shrink-0 text-muted-foreground hover:text-destructive">
+                                <IconSwap outline={ArrowPathIcon} solid={ArrowPathIconSolid} className="h-4 w-4" />
                             </Button>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2">
                         <div className="bg-background p-2 rounded border border-border flex items-center justify-center gap-2 text-sm text-success">
-                            <CheckCircle2 className="h-4 w-4" /> <b>{stats.known}</b>
+                            <CheckCircleIcon className="h-4 w-4" /> <b>{stats.known}</b>
                         </div>
                         <div className="bg-background p-2 rounded border border-border flex items-center justify-center gap-2 text-sm text-warning">
-                            <RotateCcw className="h-4 w-4" /> <b>{stats.learning}</b>
+                            <ArrowPathIcon className="h-4 w-4" /> <b>{stats.learning}</b>
                         </div>
                         <div className="bg-background p-2 rounded border border-border flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                            <XCircle className="h-4 w-4" /> <b>{stats.new}</b>
+                            <XCircleIcon className="h-4 w-4" /> <b>{stats.new}</b>
                         </div>
                     </div>
                 </div>
@@ -358,20 +388,35 @@ export default function LearnDetailPage() {
                     <Card className="border-border bg-card shadow-sm">
                         <CardContent className="p-6 flex flex-col items-center gap-4">
                             {micPermission === 'prompt' ? (
-                                <Button size="lg" onClick={requestMicPermission} className="w-full">
-                                    <Mic className="mr-2 h-5 w-5" /> Mikrofon erlauben
+                                <Button size="lg" onClick={requestMicPermission} className="group w-full">
+                                    <IconSwap
+                                        outline={MicrophoneIcon}
+                                        solid={MicrophoneIconSolid}
+                                        className="mr-2 h-5 w-5"
+                                    />{' '}
+                                    Mikrofon erlauben
                                 </Button>
                             ) : !isRecording && !isEvaluating ? (
-                                <Button size="lg" onClick={startRecording} className="w-full py-8 text-lg rounded-xl">
-                                    <Mic className="mr-2 h-6 w-6" /> Antworten
+                                <Button size="lg" onClick={startRecording} className="group w-full py-8 text-lg rounded-xl">
+                                    <IconSwap
+                                        outline={MicrophoneIcon}
+                                        solid={MicrophoneIconSolid}
+                                        className="mr-2 h-6 w-6"
+                                    />{' '}
+                                    Antworten
                                 </Button>
                             ) : isRecording ? (
-                                <Button size="lg" onClick={stopRecording} variant="destructive" className="w-full py-8 text-lg rounded-xl animate-pulse">
-                                    <Square className="mr-2 h-6 w-6" /> Stop
+                                <Button size="lg" onClick={stopRecording} variant="destructive" className="group w-full py-8 text-lg rounded-xl animate-pulse">
+                                    <IconSwap
+                                        outline={StopIcon}
+                                        solid={StopIconSolid}
+                                        className="mr-2 h-6 w-6"
+                                    />{' '}
+                                    Stop
                                 </Button>
                             ) : (
                                 <div className="flex items-center gap-2 text-muted-foreground py-4">
-                                    <Loader2 className="animate-spin" /> Auswertung...
+                                    <ArrowPathIcon className="h-4 w-4 animate-spin" /> Auswertung...
                                 </div>
                             )}
                         </CardContent>
@@ -407,9 +452,9 @@ export default function LearnDetailPage() {
                         <div className="grid grid-cols-3 gap-2 pt-4">
                             <Button
                                 onClick={() => handleReview('wrong')}
-                                className="h-auto py-4 px-1 flex flex-col gap-2 bg-danger hover:bg-danger/90 text-danger-foreground shadow-sm"
+                                className="group h-auto py-4 px-1 flex flex-col gap-2 bg-danger hover:bg-danger/90 text-danger-foreground shadow-sm"
                             >
-                                <XCircle className="h-6 w-6" />
+                                <IconSwap outline={XCircleIcon} solid={XCircleIconSolid} className="h-6 w-6" />
                                 <div className="flex flex-col items-center leading-none gap-1">
                                     <span className="text-base md:text-lg font-bold">War falsch</span>
                                     <span className="text-sm font-medium opacity-90">in 2 Minuten</span>
@@ -419,9 +464,13 @@ export default function LearnDetailPage() {
                             <Button
                                 onClick={() => handleReview('review')}
                                 variant="outline"
-                                className="h-auto py-4 px-1 flex flex-col gap-2 bg-background border-2 border-warning text-warning hover:bg-warning/10 shadow-sm"
+                                className="group h-auto py-4 px-1 flex flex-col gap-2 bg-background border-2 border-warning text-warning hover:bg-warning/10 shadow-sm"
                             >
-                                <RotateCcw className="h-6 w-6" />
+                                <IconSwap
+                                    outline={ArrowPathIcon}
+                                    solid={ArrowPathIconSolid}
+                                    className="h-6 w-6"
+                                />
                                 <div className="flex flex-col items-center leading-none gap-1">
                                     <span className="text-base md:text-lg font-bold">Muss üben</span>
                                     <span className="text-sm font-medium">in 10 Minuten</span>
@@ -430,9 +479,13 @@ export default function LearnDetailPage() {
 
                             <Button
                                 onClick={() => handleReview('known')}
-                                className="h-auto py-4 px-1 flex flex-col gap-2 bg-success hover:bg-success/90 text-success-foreground shadow-sm"
+                                className="group h-auto py-4 px-1 flex flex-col gap-2 bg-success hover:bg-success/90 text-success-foreground shadow-sm"
                             >
-                                <CheckCircle2 className="h-6 w-6" />
+                                <IconSwap
+                                    outline={CheckCircleIcon}
+                                    solid={CheckCircleIconSolid}
+                                    className="h-6 w-6"
+                                />
                                 <div className="flex flex-col items-center leading-none gap-1">
                                     <span className="text-base md:text-lg font-bold">Kann ich!</span>
                                     <span className="text-sm font-medium opacity-90">vorerst fertig</span>
