@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { signOut } from "next-auth/react";
 import { useState } from "react";
 import { UserIcon } from "@heroicons/react/24/outline";
@@ -40,9 +41,12 @@ export function AvatarBadge({
   }
 
   return (
-    <img
+    <Image
       src={image}
       alt={name ? `${name} Avatar` : "Avatar"}
+      width={48}
+      height={48}
+      sizes="48px"
       className="h-12 w-12 rounded-full object-cover"
       onError={() => setFailed(true)}
     />

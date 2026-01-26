@@ -9,6 +9,11 @@ const seedPath = path.join(__dirname, "seed-data.json");
 const seedData = JSON.parse(fs.readFileSync(seedPath, "utf-8"));
 
 async function seedDev() {
+  if (process.env.RUN_SEED_DEV !== "1") {
+    console.log("Seed skipped: RUN_SEED_DEV not set.");
+    return;
+  }
+
   if (process.env.NODE_ENV && process.env.NODE_ENV !== "development") {
     console.log("Skipping seed: not in development.");
     return;

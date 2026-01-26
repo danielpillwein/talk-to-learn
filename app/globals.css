@@ -94,15 +94,27 @@
   * {
     @apply border-border;
   }
+  html {
+    scroll-behavior: smooth;
+  }
   body {
     @apply bg-background text-foreground font-sans;
   }
 }
 
+html,
+body {
+  overflow-x: hidden;
+}
+
+section[id] {
+  scroll-margin-top: 88px;
+}
+
 .theme-switch {
-  width: 72px;
-  height: 40px;
-  border-radius: 20px;
+  width: 60px;
+  height: 36px;
+  border-radius: 18px;
   border: none;
   position: relative;
   cursor: pointer;
@@ -116,8 +128,8 @@
   position: absolute;
   top: 4px;
   left: 4px;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--card);
   box-shadow: 0 1px 4px hsl(0 0% 0% / 0.1);
@@ -128,8 +140,8 @@
 }
 
 .theme-switch__icon {
-  width: 19.2px;
-  height: 19.2px;
+  width: 16px;
+  height: 16px;
   color: var(--foreground);
 }
 
@@ -138,7 +150,7 @@
 }
 
 .theme-switch[data-state="checked"] .theme-switch__thumb {
-  left: 36px;
+  left: 28px;
 }
 
 .theme-switch:focus-visible {

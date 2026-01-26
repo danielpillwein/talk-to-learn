@@ -1,7 +1,9 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import Script from 'next/script';
 import { useSession } from 'next-auth/react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -273,9 +275,12 @@ export default function LearnDetailPage() {
     const avatarContent = useMemo(() => {
         if (user?.image && !avatarFailed) {
             return (
-                <img
+                <Image
                     src={user.image}
                     alt="Account"
+                    width={28}
+                    height={28}
+                    sizes="28px"
                     className="h-7 w-7 rounded-full object-cover"
                     onError={() => setAvatarFailed(true)}
                 />
@@ -334,7 +339,31 @@ export default function LearnDetailPage() {
     }
 
     return (
-        <main className="min-h-screen bg-background px-6 py-6">
+        <>
+            <Script
+                id="mathjax-config"
+                strategy="beforeInteractive"
+                dangerouslySetInnerHTML={{
+                    __html: `
+                        window.MathJax = {
+                            tex: {
+                                inlineMath: [['\\\\(', '\\\\)']],
+                                displayMath: [['\\\\[', '\\\\]']],
+                                processEscapes: true
+                            },
+                            options: {
+                                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+                            }
+                        };
+                    `,
+                }}
+            />
+            <Script
+                id="mathjax-script"
+                src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+                strategy="afterInteractive"
+            />
+            <main className="min-h-screen bg-background px-6 py-6">
             <div className="max-w-4xl mx-auto space-y-6">
                 <div className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-4 shadow-sm md:p-5">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -497,6 +526,7 @@ export default function LearnDetailPage() {
 
                 {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
             </div>
-        </main>
+            </main>
+        </>
     );
 }

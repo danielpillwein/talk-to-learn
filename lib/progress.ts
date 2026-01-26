@@ -79,14 +79,14 @@ export function computeStats(progress: Array<{ status: string }>, total: number)
 }
 
 export function computeNextQuestionId(
-  progress: Array<{ cardId: string; status: string; nextReview: Date }>,
+  progress: Array<{ cardId: string; status: string; nextReview: Date | null }>,
   cardIdToIndex: Map<string, number>
 ) {
   const now = Date.now();
 
   const due = progress
-    .filter((item) => item.status === "learning" && item.nextReview.getTime() <= now)
-    .sort((a, b) => a.nextReview.getTime() - b.nextReview.getTime());
+    .filter((item) => item.status === "learning" && item.nextReview && item.nextReview.getTime() <= now)
+    .sort((a, b) => a.nextReview!.getTime() - b.nextReview!.getTime());
 
   if (due.length > 0) {
     return cardIdToIndex.get(due[0].cardId) ?? null;

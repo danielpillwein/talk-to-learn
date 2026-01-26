@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
@@ -63,9 +64,12 @@ export default function LearnIndexPage() {
     const avatarContent = useMemo(() => {
         if (user?.image && !avatarFailed) {
             return (
-                <img
+                <Image
                     src={user.image}
                     alt="Account"
+                    width={32}
+                    height={32}
+                    sizes="32px"
                     className="h-8 w-8 rounded-full object-cover"
                     onError={() => setAvatarFailed(true)}
                 />

@@ -4,6 +4,18 @@ import path from "path";
 import OpenAI from "openai";
 import { auth } from "@/lib/auth";
 
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let cachedPrompt: string | null = null;
+const getSystemPrompt = () => {
+  if (!cachedPrompt) {
+    cachedPrompt = fs.readFileSync(
+      path.join(process.cwd(), "prompts", "ai-generate.md"),
+      "utf-8"
+    );
+  }
+  return cachedPrompt;
+};
+
 export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -22,12 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "title and text are required" }, { status: 400 });
   }
 
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-  const systemPrompt = fs.readFileSync(
-    path.join(process.cwd(), "prompts", "ai-generate.md"),
-    "utf-8"
-  );
+  const systemPrompt = getSystemPrompt();
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",

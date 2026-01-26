@@ -5,6 +5,26 @@ import { auth } from '@/lib/auth';
 import fs from 'fs';
 import path from 'path';
 
+const groq = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: 'https://api.groq.com/openai/v1',
+});
+
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+});
+
+let cachedPrompt: string | null = null;
+const getSystemPrompt = () => {
+    if (!cachedPrompt) {
+        cachedPrompt = fs.readFileSync(
+            path.join(process.cwd(), 'prompts', 'evaluate.md'),
+            'utf-8'
+        );
+    }
+    return cachedPrompt;
+};
+
 export async function POST(request: Request) {
     try {
         const session = await auth();
@@ -21,11 +41,6 @@ export async function POST(request: Request) {
         }
 
         // 1. Transkription mit GROQ
-        const groq = new OpenAI({
-            apiKey: process.env.GROQ_API_KEY,
-            baseURL: 'https://api.groq.com/openai/v1',
-        });
-
         const transcription = await groq.audio.transcriptions.create({
             file: file,
             model: 'whisper-large-v3',
@@ -65,17 +80,10 @@ export async function POST(request: Request) {
         }
 
         // 3. Bewertung mit OpenAI
-        const openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY,
-        });
-
-        const systemPrompt = fs.readFileSync(
-            path.join(process.cwd(), 'prompts', 'evaluate.md'),
-            'utf-8'
-        );
+        const systemPrompt = getSystemPrompt();
 
         const evaluationPrompt = `Frage: ${question.question}
-        Muster: ${question.modelAnswer}
+        Muster: ${question.answer}
         User: ${userAnswer}`;
 
         const completion = await openai.chat.completions.create({

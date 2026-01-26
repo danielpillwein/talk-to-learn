@@ -3,13 +3,15 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Script from "next/script";
 import { Providers } from "./providers";
-import { ThemeSwitchClient } from "@/components/theme-switch";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "Talk to Learn",
   description: "Practice answering questions with voice",
+  icons: {
+    icon: "/mascot/favicon.png",
+  },
 };
 
 export default function RootLayout({
@@ -40,43 +42,15 @@ export default function RootLayout({
           }}
         />
         {/* Stats */}
-        <Script
+        <script
           src="https://cloud.umami.is/script.js"
           data-website-id="45361192-66d0-46ad-ba1e-c55cfdaa9d81"
-          strategy="afterInteractive"
-        />
-
-        <Script
-          id="mathjax-config"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.MathJax = {
-                tex: {
-                  inlineMath: [['\\\\(', '\\\\)']],
-                  displayMath: [['\\\\[', '\\\\]']],
-                  processEscapes: true
-                },
-                options: {
-                  skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
-                }
-              };
-            `,
-          }}
-        />
-
-        <Script
-          id="mathjax-script"
-          src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
-          strategy="beforeInteractive"
+          defer
         />
       </head>
 
       <body className={inter.variable}>
         <Providers>
-          <div className="fixed right-4 top-4 z-50">
-            <ThemeSwitchClient />
-          </div>
           {children}
         </Providers>
       </body>

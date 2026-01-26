@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -165,9 +166,12 @@ export default function CreateDeckPage() {
             aria-label="Account"
           >
             {user?.image && !avatarFailed ? (
-              <img
+              <Image
                 src={user.image}
                 alt="Account"
+                width={32}
+                height={32}
+                sizes="32px"
                 className="h-8 w-8 rounded-full object-cover"
                 onError={() => setAvatarFailed(true)}
               />

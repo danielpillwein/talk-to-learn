@@ -5,6 +5,18 @@ import pdfParse from "pdf-parse";
 import fs from "fs";
 import path from "path";
 
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let cachedPrompt: string | null = null;
+const getSystemPrompt = () => {
+  if (!cachedPrompt) {
+    cachedPrompt = fs.readFileSync(
+      path.join(process.cwd(), "prompts", "ai-generate.md"),
+      "utf-8"
+    );
+  }
+  return cachedPrompt;
+};
+
 const normalizeText = (input: string) =>
   input
     .replace(/\r\n/g, "\n")
@@ -47,12 +59,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "empty text" }, { status: 400 });
   }
 
-  const systemPrompt = fs.readFileSync(
-    path.join(process.cwd(), "prompts", "ai-generate.md"),
-    "utf-8"
-  );
-
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const systemPrompt = getSystemPrompt();
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
