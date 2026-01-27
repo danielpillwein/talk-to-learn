@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Review = {
   rating: number;
@@ -28,17 +28,48 @@ const REVIEWS: Review[] = [
 
 export function HeroReviewCarousel() {
   const [index, setIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const rafRef = useRef<number | null>(null);
+  const startRef = useRef<number | null>(null);
+
+  const DURATION = 10000;
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setIndex((prev) => (prev + 1) % REVIEWS.length);
-    }, 10000);
-    return () => window.clearInterval(timer);
+    const step = (timestamp: number) => {
+      if (startRef.current === null) startRef.current = timestamp;
+      const elapsed = timestamp - startRef.current;
+      const next = Math.min(elapsed / DURATION, 1);
+      setProgress(next);
+      if (next >= 1) {
+        setIndex((current) => (current + 1) % REVIEWS.length);
+        startRef.current = timestamp;
+        setProgress(0);
+      }
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      startRef.current = null;
+    };
   }, []);
 
   const order = useMemo(() => {
     return REVIEWS.map((_, idx) => (index + idx) % REVIEWS.length);
   }, [index]);
+
+  const goPrev = () => {
+    setIndex((prev) => (prev - 1 + REVIEWS.length) % REVIEWS.length);
+    setProgress(0);
+    startRef.current = null;
+  };
+
+  const goNext = () => {
+    setIndex((prev) => (prev + 1) % REVIEWS.length);
+    setProgress(0);
+    startRef.current = null;
+  };
 
   return (
     <div className="relative flex h-full min-h-[220px] w-full items-start gap-4">
@@ -79,7 +110,7 @@ export function HeroReviewCarousel() {
       <div className="flex flex-col items-center gap-2 z-10">
         <button
           type="button"
-          onClick={() => setIndex((prev) => (prev - 1 + REVIEWS.length) % REVIEWS.length)}
+          onClick={goPrev}
           className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition hover:text-foreground"
           aria-label="Vorheriger Review"
         >
@@ -91,22 +122,29 @@ export function HeroReviewCarousel() {
             return (
               <span
                 key={`indicator-${dotIndex}`}
-                className={`w-2 rounded-full border transition ${
-                  active ? "h-7" : "h-5"
+                className={`relative w-[6px] rounded-full border ${
+                  active ? "h-[26px]" : "h-[20px]"
                 }`}
                 style={{
-                  backgroundColor: active
-                    ? "color-mix(in srgb, var(--foreground) 45%, transparent)"
-                    : "transparent",
-                  borderColor: "color-mix(in srgb, var(--foreground) 40%, transparent)",
+                  borderColor: "color-mix(in srgb, var(--foreground) 30%, transparent)",
                 }}
-              />
+              >
+                {active && (
+                  <span
+                    className="absolute left-0 right-0 top-0 rounded-full"
+                    style={{
+                      height: `${Math.round(progress * 100)}%`,
+                      backgroundColor: "color-mix(in srgb, var(--foreground) 45%, transparent)",
+                    }}
+                  />
+                )}
+              </span>
             );
           })}
         </div>
         <button
           type="button"
-          onClick={() => setIndex((prev) => (prev + 1) % REVIEWS.length)}
+          onClick={goNext}
           className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition hover:text-foreground"
           aria-label="Nächster Review"
         >
