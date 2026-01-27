@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { UserIcon } from "@heroicons/react/24/outline";
 import { UserIcon as UserIconSolid } from "@heroicons/react/24/solid";
 import { IconSwap } from "@/components/ui/icon";
+import { clearHeroUpload, loadHeroUpload } from "@/lib/hero-upload-store";
 
 type CardDraft = {
   question: string;
@@ -24,7 +25,8 @@ type DraftPayload = {
 };
 
 const DRAFT_STORAGE_KEY = "ttl:create-deck-draft";
-const HERO_UPLOAD_KEY = "ttl:hero-upload";
+const MAX_UPLOAD_MB = 10;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
 export default function CreateDeckPage() {
   const router = useRouter();
@@ -75,31 +77,6 @@ export default function CreateDeckPage() {
     }
   };
 
-  const loadHeroUpload = (): File | null => {
-    try {
-      const raw = sessionStorage.getItem(HERO_UPLOAD_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as {
-        name?: string;
-        type?: string;
-        dataBase64?: string;
-      };
-      if (!parsed?.name || !parsed?.dataBase64) return null;
-      const binary = atob(parsed.dataBase64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], {
-        type: parsed.type || "application/octet-stream",
-      });
-      sessionStorage.removeItem(HERO_UPLOAD_KEY);
-      return new File([blob], parsed.name, { type: parsed.type });
-    } catch {
-      return null;
-    }
-  };
-
   useEffect(() => {
     if (!user || autoSaveTriggered.current) return;
     const draft = loadDraft();
@@ -142,10 +119,23 @@ export default function CreateDeckPage() {
 
   useEffect(() => {
     if (file) return;
-    const uploaded = loadHeroUpload();
-    if (!uploaded) return;
-    setFile(uploaded);
-    setFileName(uploaded.name);
+    let isActive = true;
+    const fetchUpload = async () => {
+      const uploaded = await loadHeroUpload();
+      if (!uploaded || !isActive) return;
+      if (uploaded.size > MAX_UPLOAD_BYTES) {
+        setError(`Datei zu groß. Maximal ${MAX_UPLOAD_MB} MB erlaubt.`);
+        await clearHeroUpload();
+        return;
+      }
+      setFile(uploaded);
+      setFileName(uploaded.name);
+      await clearHeroUpload();
+    };
+    void fetchUpload();
+    return () => {
+      isActive = false;
+    };
   }, [file]);
 
   const canGenerate = useMemo(() => {
@@ -341,7 +331,7 @@ export default function CreateDeckPage() {
                   Ziehe eine Datei hierher oder tippe zum Auswählen
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  PDF, TXT oder MD – max. 1 Datei
+                  PDF, TXT oder MD – max. 1 Datei (bis {MAX_UPLOAD_MB} MB)
                 </p>
                 <input
                   type="file"
@@ -349,6 +339,12 @@ export default function CreateDeckPage() {
                   disabled={!!file}
                   onChange={(event) => {
                     const selected = event.target.files?.[0] ?? null;
+                    if (selected && selected.size > MAX_UPLOAD_BYTES) {
+                      setError(`Datei zu groß. Maximal ${MAX_UPLOAD_MB} MB erlaubt.`);
+                      event.target.value = "";
+                      return;
+                    }
+                    setError(null);
                     setFile(selected);
                     setFileName(selected?.name ?? "");
                   }}

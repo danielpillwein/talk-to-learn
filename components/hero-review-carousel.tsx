@@ -32,7 +32,7 @@ export function HeroReviewCarousel() {
   const rafRef = useRef<number | null>(null);
   const startRef = useRef<number | null>(null);
 
-  const DURATION = 10000;
+  const DURATION = 5000;
 
   useEffect(() => {
     const step = (timestamp: number) => {

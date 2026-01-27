@@ -6,6 +6,8 @@ import path from "path";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let cachedPrompt: string | null = null;
+const MAX_UPLOAD_MB = 10;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 const getSystemPrompt = () => {
   if (!cachedPrompt) {
     cachedPrompt = fs.readFileSync(
@@ -35,6 +37,13 @@ export async function POST(request: Request) {
 
   if (!file || !title) {
     return NextResponse.json({ error: "file and title are required" }, { status: 400 });
+  }
+
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      { error: `file exceeds ${MAX_UPLOAD_MB} MB limit` },
+      { status: 413 }
+    );
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
