@@ -2,6 +2,8 @@ import Link from "next/link";
 import Image from "next/image";
 import type { Metadata } from "next";
 import { ThemeSwitchClient } from "@/components/theme-switch";
+import { HeroUploadCta } from "@/components/hero-upload-cta";
+import { HeroReviewCarousel } from "@/components/hero-review-carousel";
 
 export const metadata: Metadata = {
   title: "Talk to Learn | Sprechbasierte Lernsessions für Studierende",
@@ -150,8 +152,8 @@ export default function LandingPage() {
   ];
 
   return (
-    <main className="bg-background text-foreground overflow-x-hidden">
-      <nav className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur">
+    <main className="bg-background text-foreground">
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-4">
           <Link href="/" className="flex min-w-0 items-center gap-3 font-semibold">
             <Image
@@ -203,31 +205,26 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      <div className="mx-auto flex max-w-6xl flex-col gap-16 px-6 py-12 md:gap-24 md:py-20">
-        <header className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-          <div className="space-y-6">
+      <div className="overflow-x-hidden pt-20">
+        <div className="mx-auto flex max-w-6xl flex-col gap-16 px-6 py-12 md:gap-24 md:py-20">
+        <header className="grid gap-6 pb-10 lg:grid-cols-[70%_30%] lg:items-start">
+          <div className="space-y-6 lg:pr-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground shadow-sm">
+              <span className="h-2 w-2 rounded-full bg-primary" />
+              Upload → Fragen → Erklären
+            </div>
             <h1 className="text-4xl font-semibold leading-tight md:text-6xl">
-              Bestehe Prüfungen, indem du es erklärst.
+              Erstelle mit{" "}
+              <span className="text-primary italic">KI</span> Karteikarten aus{" "}
+              <span className="text-primary italic">deinen Unterlagen</span>
             </h1>
             <p className="text-base leading-relaxed text-muted-foreground md:text-lg">
-              Upload → Fragen → Audio erklären → KI-Feedback + Musterantwort.
-              So trainierst du echtes Verständnis, nicht nur Wiedererkennen.
+              Du lieferst die Inhalte. Wir stellen dir die wichtigen Fragen.{" "}
+              <span className="font-semibold text-foreground/80">
+                Denn wer erklären kann, hats wirklich verstanden.
+              </span>
             </p>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Link
-                href="/auth/sign-in"
-                className="rounded-full bg-primary px-6 py-3 text-center text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              >
-                Kostenlos starten
-              </Link>
-              <Link
-                href="#produkt"
-                className="rounded-full border border-border px-6 py-3 text-center text-sm font-semibold text-foreground transition hover:border-foreground/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              >
-                Beispiel ansehen
-              </Link>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground -mt-1">
               {trustBadges.map((badge) => (
                 <span
                   key={badge}
@@ -239,31 +236,27 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="relative grid gap-4">
-            <Image
-              src="/mascot/otter-hero-section.png"
-              alt="Otter-Illustration für den Hero-Bereich"
-              width={800}
-              height={533}
-              sizes="(max-width: 1024px) 100vw, 45vw"
-              className="h-56 w-full rounded-3xl border border-border bg-card p-0 shadow-sm object-cover"
-              priority
-            />
-            <div className="rounded-2xl border border-border bg-background p-4 shadow-sm">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Live Feedback
-              </p>
-              <div className="mt-3 space-y-2 text-sm">
-                <div className="rounded-xl border border-success/40 bg-success/10 px-3 py-2">
-                  <p className="text-xs text-muted-foreground">Stärke</p>
-                  <div className="mt-2 h-2 w-4/5 rounded-full bg-success" />
-                </div>
-                <div className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2">
-                  <p className="text-xs text-muted-foreground">Fehlt noch</p>
-                  <div className="mt-2 h-2 w-2/5 rounded-full bg-warning" />
-                </div>
-              </div>
+          <div className="relative h-full">
+            <div className="h-full w-full overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+              <Image
+                src="/mascot/otter-hero-section.png"
+                alt="Otter-Illustration für den Hero-Bereich"
+                width={800}
+                height={600}
+                sizes="(max-width: 1024px) 100vw, 30vw"
+                className="h-full w-full object-cover"
+                priority
+              />
             </div>
+          </div>
+
+          <div className="lg:col-span-1 pb-10">
+            <div className="flex h-full flex-col gap-3">
+              <HeroUploadCta />
+            </div>
+          </div>
+          <div className="lg:col-span-1 h-full pb-10 max-w-md w-full ml-auto">
+            <HeroReviewCarousel />
           </div>
         </header>
 
@@ -484,6 +477,7 @@ export default function LandingPage() {
             </Link>
           </div>
         </footer>
+        </div>
       </div>
     </main>
   );

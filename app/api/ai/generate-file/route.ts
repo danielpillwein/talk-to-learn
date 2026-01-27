@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { auth } from "@/lib/auth";
 import pdfParse from "pdf-parse";
 import fs from "fs";
 import path from "path";
@@ -26,11 +25,6 @@ const normalizeText = (input: string) =>
     .trim();
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
   const title = String(formData.get("title") ?? "").trim();

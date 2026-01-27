@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -18,10 +18,19 @@ type CardDraft = {
   answer: string;
 };
 
+type DraftPayload = {
+  title: string;
+  cards: CardDraft[];
+};
+
+const DRAFT_STORAGE_KEY = "ttl:create-deck-draft";
+const HERO_UPLOAD_KEY = "ttl:hero-upload";
+
 export default function CreateDeckPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const user = session?.user;
+  const autoSaveTriggered = useRef(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -37,6 +46,107 @@ export default function CreateDeckPage() {
   const [progress, setProgress] = useState(0);
 
   const usingFile = !!file;
+
+  const saveDraft = (payload: DraftPayload) => {
+    try {
+      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore storage errors (private mode / quota)
+    }
+  };
+
+  const loadDraft = (): DraftPayload | null => {
+    try {
+      const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as DraftPayload;
+      if (!parsed?.title || !Array.isArray(parsed.cards)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const clearDraft = () => {
+    try {
+      window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
+  };
+
+  const loadHeroUpload = (): File | null => {
+    try {
+      const raw = sessionStorage.getItem(HERO_UPLOAD_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as {
+        name?: string;
+        type?: string;
+        dataBase64?: string;
+      };
+      if (!parsed?.name || !parsed?.dataBase64) return null;
+      const binary = atob(parsed.dataBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], {
+        type: parsed.type || "application/octet-stream",
+      });
+      sessionStorage.removeItem(HERO_UPLOAD_KEY);
+      return new File([blob], parsed.name, { type: parsed.type });
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (!user || autoSaveTriggered.current) return;
+    const draft = loadDraft();
+    if (!draft) return;
+
+    autoSaveTriggered.current = true;
+    if (!title && cards.length === 0) {
+      setTitle(draft.title);
+      setCards(draft.cards);
+    }
+
+    const autoSave = async () => {
+      setIsSaving(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/ai/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: draft.title,
+            cards: draft.cards,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Auto-save failed");
+        }
+
+        clearDraft();
+        router.replace("/app/learn");
+      } catch (err) {
+        setError("Speichern fehlgeschlagen.");
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+    autoSave();
+  }, [user, router, title, cards.length]);
+
+  useEffect(() => {
+    if (file) return;
+    const uploaded = loadHeroUpload();
+    if (!uploaded) return;
+    setFile(uploaded);
+    setFileName(uploaded.name);
+  }, [file]);
 
   const canGenerate = useMemo(() => {
     return title.trim().length > 0 && usingFile;
@@ -107,6 +217,12 @@ export default function CreateDeckPage() {
         return;
       }
 
+      if (!user) {
+        saveDraft({ title: title.trim(), cards: cleaned });
+        router.push("/auth/sign-in?callbackUrl=/app/create");
+        return;
+      }
+
       const response = await fetch("/api/ai/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -117,9 +233,15 @@ export default function CreateDeckPage() {
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          saveDraft({ title: title.trim(), cards: cleaned });
+          router.push("/auth/sign-in?callbackUrl=/app/create");
+          return;
+        }
         throw new Error("Speichern fehlgeschlagen.");
       }
 
+      clearDraft();
       router.push("/app/learn");
     } catch (err) {
       setError("Speichern fehlgeschlagen.");
@@ -386,6 +508,11 @@ export default function CreateDeckPage() {
                   {isSaving ? "Speichern..." : "Lernset speichern"}
                 </Button>
               </div>
+              {!user && (
+                <p className="text-sm text-muted-foreground">
+                  Zum Speichern brauchst du einen kostenlosen Account.
+                </p>
+              )}
             </CardContent>
           </Card>
         )}

@@ -2,21 +2,25 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function SignInPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const user = session?.user;
+  const callbackParam = searchParams.get("callbackUrl");
+  const callbackUrl =
+    callbackParam && callbackParam.startsWith("/") ? callbackParam : "/app/learn";
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace("/app/learn");
+      router.replace(callbackUrl);
     }
-  }, [status, router]);
+  }, [status, router, callbackUrl]);
 
   if (status === "loading") {
     return (
@@ -50,7 +54,7 @@ export default function SignInPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Button asChild className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
-              <Link href="/app/learn">Weiter zum Lernen</Link>
+              <Link href={callbackUrl}>Weiter zum Lernen</Link>
             </Button>
             <Button
               variant="outline"
@@ -87,7 +91,7 @@ export default function SignInPage() {
           </div>
           <Button
             className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-            onClick={() => signIn("google", { callbackUrl: "/app/learn" })}
+            onClick={() => signIn("google", { callbackUrl })}
           >
             Account erstellen
           </Button>
@@ -101,7 +105,7 @@ export default function SignInPage() {
           <Button
             variant="outline"
             className="w-full"
-            onClick={() => signIn("google", { callbackUrl: "/app/learn" })}
+            onClick={() => signIn("google", { callbackUrl })}
           >
             Anmelden
           </Button>
