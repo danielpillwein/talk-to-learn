@@ -45,11 +45,12 @@ export function HeroUploadCta() {
       <div
         role="button"
         tabIndex={0}
-        className={`group relative w-full flex min-h-[172px] cursor-pointer flex-col items-center justify-center gap-1 rounded-3xl border border-dashed px-8 py-6 text-center text-base font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring hover:border-solid hover:shadow-[inset_0_0_8px_5px_rgba(95,185,125,0.12)] ${
+        className={`group relative w-full flex min-h-[172px] cursor-pointer flex-col items-center justify-center gap-1 rounded-3xl border border-dashed bg-white px-8 py-6 text-center text-base font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring hover:border-solid hover:shadow-[inset_0_0_12px_5px_color-mix(in_srgb,var(--border)_50%,transparent)] ${
           isDragging
-            ? "border-success/60 text-foreground shadow-[inset_0_0_8px_5px_rgba(95,185,125,0.12)]"
-            : "border-success/50 text-foreground"
+            ? "border-success/60 border-solid text-primary-foreground shadow-[inset_0_0_8px_5px_color-mix(in_srgb,var(--border)_30%,transparent)]"
+            : "border-success/50 text-primary-foreground"
         }`}
+        style={{ borderStyle: isDragging ? "solid" : undefined }}
         onClick={() => inputRef.current?.click()}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -82,12 +83,25 @@ export function HeroUploadCta() {
         }}
       >
         <div className="absolute right-3 top-3 z-50">
-          <InfoTooltip title="Nur eine Datei (*.pdf, *.txt, *.md)" />
+          <InfoTooltip title="Nur eine Datei (*.pdf, *.txt, *.md)">
+            <svg
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              className="h-5 w-5 fill-none text-border transition-colors duration-300"
+            >
+              <path
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            </svg>
+          </InfoTooltip>
         </div>
         <div className="flex items-center justify-center text-primary transition-transform duration-200 group-hover:-translate-y-0.5">
           <svg
             viewBox="0 0 24 24"
-            className={`h-[54px] w-[54px] transition-transform duration-200 drop-shadow-[0_0_6px_var(--background)] ${
+            className={`h-[54px] w-[54px] transition-transform duration-200 drop-shadow-[0_0_6px_rgba(255,255,255,0.9)] ${
               isDragging ? "scale-110" : "group-hover:scale-110"
             }`}
             aria-hidden="true"
@@ -105,20 +119,20 @@ export function HeroUploadCta() {
                 isDragging ? "opacity-100 -translate-y-1" : "opacity-0 translate-y-0.5"
               }`}
             >
-              <rect x="4.1" y="7.1" width="11.2" height="5.1" rx="0.9" fill="#d9d9d9" />
-              <rect x="6.4" y="5.9" width="11.2" height="5.1" rx="0.9" fill="#f5f5f5" />
+              <rect x="4.1" y="7.1" width="11.2" height="5.1" rx="0.9" fill="#b3b3b3" />
+              <rect x="6.4" y="5.9" width="11.2" height="5.1" rx="0.9" fill="#d0d0d0" />
             </g>
             <path
               d="M3 8.5h7.2l1.8-2h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
               fill="currentColor"
-              style={{ filter: "drop-shadow(0 -2px 4px var(--background))" }}
+              style={{ filter: "drop-shadow(0 -2px 4px rgba(255,255,255,0.9))" }}
             />
           </svg>
         </div>
-        <span className="text-lg font-medium text-background/80">
+        <span className="text-lg font-semibold text-border">
           {isLoading ? "Wird vorbereitet..." : "Datei hier ablegen, um direkt zu starten"}
         </span>
-        <span className="text-sm font-medium text-muted-foreground">
+        <span className="text-sm font-medium text-border">
           oder klicken, um deine Unterlagen auszuwählen
         </span>
       </div>
