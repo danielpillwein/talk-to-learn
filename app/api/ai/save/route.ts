@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 
 type CardPayload = { question: string; answer: string };
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

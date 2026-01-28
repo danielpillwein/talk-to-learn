@@ -7,7 +7,7 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function SignInPage() {
+export default function SignInPage(): JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();

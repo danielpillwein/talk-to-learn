@@ -8,7 +8,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let cachedPrompt: string | null = null;
 const MAX_UPLOAD_MB = 10;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
-const getSystemPrompt = () => {
+function getSystemPrompt(): string {
   if (!cachedPrompt) {
     cachedPrompt = fs.readFileSync(
       path.join(process.cwd(), "prompts", "ai-generate.md"),
@@ -16,17 +16,18 @@ const getSystemPrompt = () => {
     );
   }
   return cachedPrompt;
-};
+}
 
-const normalizeText = (input: string) =>
-  input
+function normalizeText(input: string): string {
+  return input
     .replace(/\r\n/g, "\n")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ ]+\n/g, "\n")
     .trim();
+}
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
   const title = String(formData.get("title") ?? "").trim();

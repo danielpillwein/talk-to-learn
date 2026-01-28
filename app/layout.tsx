@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
+import type { ReactNode } from "react";
 import Script from "next/script";
+import { Inter } from "next/font/google";
 import { Providers } from "./providers";
+import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -14,11 +15,13 @@ export const metadata: Metadata = {
   },
 };
 
+type RootLayoutProps = {
+  children: ReactNode;
+};
+
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode;
-}) {
+}: RootLayoutProps): JSX.Element {
   return (
     <html lang="de" className="dark">
       <head>

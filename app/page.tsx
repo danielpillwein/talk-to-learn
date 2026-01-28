@@ -3,6 +3,7 @@ import Image from "next/image";
 import type { Metadata } from "next";
 import { ThemeSwitchClient } from "@/components/theme-switch";
 import { HeroUploadCta } from "@/components/hero-upload-cta";
+import { HeroTypewriter } from "@/components/hero-typewriter";
 import { HeroReviewCarousel } from "@/components/hero-review-carousel";
 
 export const metadata: Metadata = {
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function LandingPage() {
+export default function LandingPage(): JSX.Element {
   const trustBadges = [
     "Für Studierende",
     "Audio statt Tippen",
@@ -207,16 +208,21 @@ export default function LandingPage() {
 
       <div className="overflow-x-hidden pt-20">
         <div className="mx-auto flex max-w-6xl flex-col gap-16 px-6 py-12 md:gap-24 md:py-20">
-        <header className="grid gap-6 pb-10 lg:grid-cols-[70%_30%] lg:items-start">
-          <div className="space-y-6 lg:pr-2">
+        <header className="grid gap-6 pb-10 md:grid-cols-[minmax(0,1fr)_minmax(0,320px)] md:items-start md:gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+          <div className="order-1 space-y-6 text-center md:order-none md:col-start-1 md:row-start-1 md:pr-6 md:text-left lg:pr-2 lg:text-left">
             <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground shadow-sm">
               <span className="h-2 w-2 rounded-full bg-primary" />
               Upload → Fragen → Erklären
             </div>
-            <h1 className="text-4xl font-semibold leading-tight md:text-6xl">
-              Erstelle mit{" "}
-              <span className="text-primary italic">KI</span> Karteikarten aus{" "}
-              <span className="text-primary italic">deinen Unterlagen</span>
+            <h1
+              className="text-[28px] font-semibold leading-[1.12] break-words hyphens-auto sm:text-4xl sm:leading-tight md:break-normal md:hyphens-none md:text-5xl lg:text-6xl"
+              lang="de"
+            >
+              Erstelle{" "}
+              <span className="text-primary italic">Karteikarten</span> mit KI aus{" "}
+              <span className="mx-auto block max-w-[20ch] break-words hyphens-auto sm:mx-0 sm:max-w-[22ch] md:inline-flex md:max-w-none md:whitespace-nowrap">
+                <HeroTypewriter className="block max-w-full text-primary italic md:inline-flex md:items-baseline md:h-[1.2em] md:leading-[1.2em] md:min-w-[22ch] md:whitespace-nowrap" />
+              </span>
             </h1>
             <p className="text-base leading-relaxed text-muted-foreground md:text-lg">
               Du lieferst die Inhalte. Wir stellen dir die wichtigen Fragen.{" "}
@@ -224,11 +230,11 @@ export default function LandingPage() {
                 Denn wer erklären kann, hats wirklich verstanden.
               </span>
             </p>
-            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground -mt-1">
+            <div className="-mt-1 flex flex-wrap justify-center gap-2 text-[10px] text-muted-foreground sm:text-xs md:justify-start">
               {trustBadges.map((badge) => (
                 <span
                   key={badge}
-                  className="rounded-full border border-border/70 bg-accent/40 px-3 py-1 text-accent-foreground"
+                  className="rounded-full border border-border/70 bg-accent/40 px-2.5 py-1 text-accent-foreground sm:px-3"
                 >
                   {badge}
                 </span>
@@ -236,7 +242,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="relative h-full">
+          <div className="order-3 h-[220px] sm:h-auto md:order-none md:col-start-2 md:row-start-1 md:h-[360px] lg:h-full">
             <div className="h-full w-full overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
               <Image
                 src="/mascot/otter-hero-section.png"
@@ -250,13 +256,17 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="lg:col-span-1 pb-10">
-            <div className="flex h-full flex-col gap-3">
-              <HeroUploadCta />
+          <div className="order-2 pb-6 md:order-none md:col-span-2 md:row-start-2 md:pb-0">
+            <div className="grid gap-4 md:grid-cols-2 md:items-stretch">
+              <div className="flex h-full flex-col gap-3">
+                <div className="mx-auto w-full max-w-[360px] md:mx-0 md:max-w-none">
+                  <HeroUploadCta />
+                </div>
+              </div>
+              <div className="h-full w-full max-w-sm md:max-w-none">
+                <HeroReviewCarousel />
+              </div>
             </div>
-          </div>
-          <div className="lg:col-span-1 h-full pb-10 max-w-md w-full ml-auto">
-            <HeroReviewCarousel />
           </div>
         </header>
 

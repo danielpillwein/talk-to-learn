@@ -28,7 +28,7 @@ const DRAFT_STORAGE_KEY = "ttl:create-deck-draft";
 const MAX_UPLOAD_MB = 10;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
-export default function CreateDeckPage() {
+export default function CreateDeckPage(): JSX.Element {
   const router = useRouter();
   const { data: session } = useSession();
   const user = session?.user;

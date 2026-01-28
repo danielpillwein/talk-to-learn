@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import type { ChangeEvent, DragEvent, KeyboardEvent } from "react";
 import { useRef, useState } from "react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 
 const HERO_UPLOAD_KEY = "ttl:hero-upload";
 
-const bufferToBase64 = async (file: File) => {
+async function bufferToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   let binary = "";
@@ -14,16 +15,16 @@ const bufferToBase64 = async (file: File) => {
     binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
-};
+}
 
-export function HeroUploadCta() {
+export function HeroUploadCta(): JSX.Element {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const dragCounter = useRef(0);
 
-  const handleUpload = async (file: File | null) => {
+  async function handleUpload(file: File | null): Promise<void> {
     if (!file) return;
     setIsLoading(true);
     try {
@@ -38,49 +39,67 @@ export function HeroUploadCta() {
     } catch {
       setIsLoading(false);
     }
-  };
+  }
+
+  function handleClick(): void {
+    inputRef.current?.click();
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    inputRef.current?.click();
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLDivElement>): void {
+    event.preventDefault();
+    if (!event.dataTransfer.types?.includes("Files")) return;
+    dragCounter.current += 1;
+    setIsDragging(true);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLDivElement>): void {
+    event.preventDefault();
+    if (!event.dataTransfer.types?.includes("Files")) return;
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(): void {
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) setIsDragging(false);
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>): void {
+    event.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    const dropped = event.dataTransfer.files?.[0] ?? null;
+    void handleUpload(dropped);
+  }
+
+  function handleChange(event: ChangeEvent<HTMLInputElement>): void {
+    const selected = event.target.files?.[0] ?? null;
+    void handleUpload(selected);
+  }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 md:h-full">
       <div
         role="button"
         tabIndex={0}
-        className={`group relative w-full flex min-h-[172px] cursor-pointer flex-col items-center justify-center gap-1 rounded-3xl border border-dashed bg-white px-8 py-6 text-center text-base font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring hover:border-solid hover:shadow-[inset_0_0_12px_5px_color-mix(in_srgb,var(--border)_50%,transparent)] ${
+        className={`group relative flex w-full min-h-[172px] cursor-pointer flex-col items-center justify-center gap-1 rounded-3xl border border-dashed bg-white px-8 py-6 text-center text-base font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring hover:border-solid hover:shadow-[inset_0_0_12px_5px_color-mix(in_srgb,var(--border)_50%,transparent)] md:h-full ${
           isDragging
             ? "border-success/60 border-solid text-primary-foreground shadow-[inset_0_0_8px_5px_color-mix(in_srgb,var(--border)_30%,transparent)]"
             : "border-success/50 text-primary-foreground"
         }`}
         style={{ borderStyle: isDragging ? "solid" : undefined }}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            inputRef.current?.click();
-          }
-        }}
-        onDragEnter={(event) => {
-          event.preventDefault();
-          if (!event.dataTransfer.types?.includes("Files")) return;
-          dragCounter.current += 1;
-          setIsDragging(true);
-        }}
-        onDragOver={(event) => {
-          event.preventDefault();
-          if (!event.dataTransfer.types?.includes("Files")) return;
-          event.dataTransfer.dropEffect = "copy";
-          setIsDragging(true);
-        }}
-        onDragLeave={() => {
-          dragCounter.current = Math.max(0, dragCounter.current - 1);
-          if (dragCounter.current === 0) setIsDragging(false);
-        }}
-        onDrop={(event) => {
-          event.preventDefault();
-          dragCounter.current = 0;
-          setIsDragging(false);
-          const dropped = event.dataTransfer.files?.[0] ?? null;
-          void handleUpload(dropped);
-        }}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
         <div className="absolute right-3 top-3 z-50">
           <InfoTooltip title="Nur eine Datei (*.pdf, *.txt, *.md)">
@@ -142,10 +161,7 @@ export function HeroUploadCta() {
         accept=".pdf,.txt,.md"
         className="hidden"
         disabled={isLoading}
-        onChange={(event) => {
-          const selected = event.target.files?.[0] ?? null;
-          void handleUpload(selected);
-        }}
+        onChange={handleChange}
       />
     </div>
   );

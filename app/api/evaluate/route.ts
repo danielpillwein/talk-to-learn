@@ -15,7 +15,7 @@ const openai = new OpenAI({
 });
 
 let cachedPrompt: string | null = null;
-const getSystemPrompt = () => {
+function getSystemPrompt(): string {
     if (!cachedPrompt) {
         cachedPrompt = fs.readFileSync(
             path.join(process.cwd(), 'prompts', 'evaluate.md'),
@@ -23,9 +23,9 @@ const getSystemPrompt = () => {
         );
     }
     return cachedPrompt;
-};
+}
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
     try {
         const session = await auth();
         if (!session?.user?.id) {

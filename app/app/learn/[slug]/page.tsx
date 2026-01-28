@@ -45,7 +45,7 @@ interface EvaluationResult {
     question: string;
 }
 
-export default function LearnDetailPage() {
+export default function LearnDetailPage(): JSX.Element {
     const params = useParams<{ slug: string }>();
     const router = useRouter();
     const deckId = params?.slug ? decodeURIComponent(params.slug) : '';

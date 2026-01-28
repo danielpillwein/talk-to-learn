@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AccountActions, AvatarBadge } from "./parts";
 
-export default async function AccountPage() {
+export default async function AccountPage(): Promise<JSX.Element> {
   const session = await auth();
   if (!session) {
     return (

@@ -16,7 +16,7 @@ export function InfoTooltip({
   className,
   positionClassName,
   children,
-}: InfoTooltipProps) {
+}: InfoTooltipProps): JSX.Element {
   return (
     <div className={`relative inline-block group/info ${className ?? ""}`}>
       <span

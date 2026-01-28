@@ -26,7 +26,7 @@ const REVIEWS: Review[] = [
   },
 ];
 
-export function HeroReviewCarousel() {
+export function HeroReviewCarousel(): JSX.Element {
   const [index, setIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const rafRef = useRef<number | null>(null);
@@ -59,21 +59,21 @@ export function HeroReviewCarousel() {
     return REVIEWS.map((_, idx) => (index + idx) % REVIEWS.length);
   }, [index]);
 
-  const goPrev = () => {
+  function goPrev(): void {
     setIndex((prev) => (prev - 1 + REVIEWS.length) % REVIEWS.length);
     setProgress(0);
     startRef.current = null;
-  };
+  }
 
-  const goNext = () => {
+  function goNext(): void {
     setIndex((prev) => (prev + 1) % REVIEWS.length);
     setProgress(0);
     startRef.current = null;
-  };
+  }
 
   return (
-    <div className="relative flex h-full min-h-[220px] w-full items-start gap-4">
-      <div className="relative w-full">
+    <div className="relative flex h-full min-h-[200px] w-full items-start gap-4 sm:min-h-[220px]">
+      <div className="relative flex-1 min-w-0">
         {order.map((reviewIndex, stackIndex) => {
           const review = REVIEWS[reviewIndex];
           const offsetX = 0;
@@ -107,7 +107,7 @@ export function HeroReviewCarousel() {
             );
           })}
         </div>
-      <div className="flex flex-col items-center gap-2 z-10">
+      <div className="z-10 flex flex-col items-center gap-2">
         <button
           type="button"
           onClick={goPrev}

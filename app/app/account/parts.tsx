@@ -8,7 +8,7 @@ import { UserIcon as UserIconSolid } from "@heroicons/react/24/solid";
 import { IconSwap } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 
-export function AccountActions() {
+export function AccountActions(): JSX.Element {
   return (
     <Button
       variant="outline"
@@ -20,13 +20,15 @@ export function AccountActions() {
   );
 }
 
+type AvatarBadgeProps = {
+  name?: string | null;
+  image?: string | null;
+};
+
 export function AvatarBadge({
   name,
   image,
-}: {
-  name?: string | null;
-  image?: string | null;
-}) {
+}: AvatarBadgeProps): JSX.Element {
   const [failed, setFailed] = useState(false);
   const initial = name?.trim()?.charAt(0)?.toUpperCase();
 

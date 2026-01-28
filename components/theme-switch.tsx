@@ -13,11 +13,15 @@ type Theme = "light" | "dark";
 
 const THEME_KEY = "theme";
 
-function applyTheme(theme: Theme) {
+function applyTheme(theme: Theme): void {
   document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
-export function ThemeSwitch({ checked, onToggle, label }: ThemeSwitchProps) {
+export function ThemeSwitch({
+  checked,
+  onToggle,
+  label,
+}: ThemeSwitchProps): JSX.Element {
   return (
     <button
       type="button"
@@ -38,7 +42,7 @@ export function ThemeSwitch({ checked, onToggle, label }: ThemeSwitchProps) {
   );
 }
 
-export function ThemeSwitchClient() {
+export function ThemeSwitchClient(): JSX.Element {
   const [theme, setTheme] = useState<Theme>("dark");
 
   useEffect(() => {
@@ -50,15 +54,17 @@ export function ThemeSwitchClient() {
 
   const isDark = theme === "dark";
 
+  function handleToggle(): void {
+    const nextTheme: Theme = isDark ? "light" : "dark";
+    setTheme(nextTheme);
+    window.localStorage.setItem(THEME_KEY, nextTheme);
+    applyTheme(nextTheme);
+  }
+
   return (
     <ThemeSwitch
       checked={isDark}
-      onToggle={() => {
-        const nextTheme: Theme = isDark ? "light" : "dark";
-        setTheme(nextTheme);
-        window.localStorage.setItem(THEME_KEY, nextTheme);
-        applyTheme(nextTheme);
-      }}
+      onToggle={handleToggle}
       label={isDark ? "Dark Mode aktiv" : "Light Mode aktiv"}
     />
   );

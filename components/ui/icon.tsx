@@ -5,17 +5,19 @@ import { cn } from "@/lib/utils";
 
 type HeroIcon = ComponentType<SVGProps<SVGSVGElement>>;
 
+type IconSwapProps = {
+  outline: HeroIcon;
+  solid: HeroIcon;
+  className?: string;
+  active?: boolean;
+};
+
 export function IconSwap({
   outline: Outline,
   solid: Solid,
   className,
   active = false,
-}: {
-  outline: HeroIcon;
-  solid: HeroIcon;
-  className?: string;
-  active?: boolean;
-}) {
+}: IconSwapProps): JSX.Element {
   return (
     <span className={cn("relative inline-flex shrink-0", className)}>
       <Outline

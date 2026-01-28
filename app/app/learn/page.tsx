@@ -21,7 +21,7 @@ interface FileStats {
     new: number;
 }
 
-export default function LearnIndexPage() {
+export default function LearnIndexPage(): JSX.Element {
     const { data: session } = useSession();
     const user = session?.user;
     const [avatarFailed, setAvatarFailed] = useState(false);

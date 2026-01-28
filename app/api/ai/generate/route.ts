@@ -5,7 +5,7 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let cachedPrompt: string | null = null;
-const getSystemPrompt = () => {
+function getSystemPrompt(): string {
   if (!cachedPrompt) {
     cachedPrompt = fs.readFileSync(
       path.join(process.cwd(), "prompts", "ai-generate.md"),
@@ -13,9 +13,9 @@ const getSystemPrompt = () => {
     );
   }
   return cachedPrompt;
-};
+}
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const body = await request.json();
   const title = String(body.title ?? "").trim();
   const text = String(body.text ?? "").trim();
