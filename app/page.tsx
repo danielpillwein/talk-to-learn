@@ -28,10 +28,10 @@ export const metadata: Metadata = {
 export default function LandingPage(): JSX.Element {
   const trustBadges = [
     "Für Studierende",
-    "Audio statt Tippen",
-    "Decks aus PDFs",
+    "KI-gestützt",
+    "Personalisiert",
     "Feedback in Sekunden",
-    "Light/Dark Mode",
+    "Erklären statt nur Wiederholen",
   ];
 
   const bentoFeatures = [
@@ -178,7 +178,7 @@ export default function LandingPage(): JSX.Element {
               Preise
             </a>
             <Link href="/auth/sign-in" className="text-muted-foreground hover:text-foreground">
-              Login
+              Mit Google anmelden
             </Link>
           </div>
           <div className="ml-auto flex items-center gap-3">

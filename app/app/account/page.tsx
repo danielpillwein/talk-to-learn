@@ -20,7 +20,7 @@ export default async function AccountPage(): Promise<JSX.Element> {
               Du brauchst einen Account, um deine Einstellungen zu sehen.
             </p>
             <Button asChild className="w-full">
-              <Link href="/auth/sign-in">Zum Login</Link>
+              <Link href="/auth/sign-in">Login / Registrieren</Link>
             </Button>
           </CardContent>
         </Card>

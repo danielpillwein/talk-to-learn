@@ -7,16 +7,24 @@ import { UserIcon } from "@heroicons/react/24/outline";
 import { UserIcon as UserIconSolid } from "@heroicons/react/24/solid";
 import { IconSwap } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 
 export function AccountActions(): JSX.Element {
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
   return (
-    <Button
+    <LoadingButton
       variant="outline"
       className="w-full md:w-auto"
-      onClick={() => signOut({ callbackUrl: "/" })}
-    >
-      Abmelden
-    </Button>
+      onClick={() => {
+        if (isSigningOut) return;
+        setIsSigningOut(true);
+        void signOut({ callbackUrl: "/" });
+      }}
+      isLoading={isSigningOut}
+      loadingText="Abmelden"
+      text="Abmelden"
+    />
   );
 }
 

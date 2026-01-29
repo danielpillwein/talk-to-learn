@@ -8,6 +8,7 @@ import { useSession } from 'next-auth/react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { LoadingButton } from '@/components/ui/loading-button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
     ArrowLeftIcon,
@@ -62,6 +63,8 @@ export default function LearnDetailPage(): JSX.Element {
     const [result, setResult] = useState<EvaluationResult | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+    const [isRequestingMic, setIsRequestingMic] = useState(false);
+    const [reviewLoading, setReviewLoading] = useState<null | 'known' | 'review' | 'wrong'>(null);
     const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
     const [stats, setStats] = useState({ known: 0, learning: 0, new: 0 });
 
@@ -129,12 +132,15 @@ export default function LearnDetailPage(): JSX.Element {
     const requestMicPermission = async () => {
         try {
             setError(null);
+            setIsRequestingMic(true);
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             stream.getTracks().forEach((track) => track.stop());
             setMicPermission('granted');
         } catch (err) {
             setMicPermission('denied');
             setError('Mikrofon-Berechtigung verweigert.');
+        } finally {
+            setIsRequestingMic(false);
         }
     };
 
@@ -198,6 +204,8 @@ export default function LearnDetailPage(): JSX.Element {
 
     const handleReview = async (type: 'known' | 'review' | 'wrong') => {
         if (!srManagerRef.current || currentQuestionId === null) return;
+        if (reviewLoading) return;
+        setReviewLoading(type);
 
         let usedServer = false;
         try {
@@ -268,6 +276,7 @@ export default function LearnDetailPage(): JSX.Element {
         }
 
         setResult(null);
+        setReviewLoading(null);
     };
 
     const currentQuestion = currentQuestionId !== null ? questions[currentQuestionId] : null;
@@ -417,14 +426,21 @@ export default function LearnDetailPage(): JSX.Element {
                     <Card className="border-border bg-card shadow-sm">
                         <CardContent className="p-6 flex flex-col items-center gap-4">
                             {micPermission === 'prompt' ? (
-                                <Button size="lg" onClick={requestMicPermission} className="group w-full">
-                                    <IconSwap
-                                        outline={MicrophoneIcon}
-                                        solid={MicrophoneIconSolid}
-                                        className="mr-2 h-5 w-5"
-                                    />{' '}
-                                    Mikrofon erlauben
-                                </Button>
+                                <LoadingButton
+                                    size="lg"
+                                    onClick={requestMicPermission}
+                                    className="group w-full"
+                                    isLoading={isRequestingMic}
+                                    loadingText="Prüfe"
+                                    text="Mikrofon erlauben"
+                                    startIcon={
+                                        <IconSwap
+                                            outline={MicrophoneIcon}
+                                            solid={MicrophoneIconSolid}
+                                            className="h-5 w-5"
+                                        />
+                                    }
+                                />
                             ) : !isRecording && !isEvaluating ? (
                                 <Button size="lg" onClick={startRecording} className="group w-full py-8 text-lg rounded-xl">
                                     <IconSwap
@@ -481,6 +497,9 @@ export default function LearnDetailPage(): JSX.Element {
                         <div className="grid grid-cols-3 gap-2 pt-4">
                             <Button
                                 onClick={() => handleReview('wrong')}
+                                disabled={reviewLoading !== null}
+                                isLoading={reviewLoading === 'wrong'}
+                                loadingText="Speichere"
                                 className="group h-auto py-4 px-1 flex flex-col gap-2 bg-danger hover:bg-danger/90 text-danger-foreground shadow-sm"
                             >
                                 <IconSwap outline={XCircleIcon} solid={XCircleIconSolid} className="h-6 w-6" />
@@ -493,6 +512,9 @@ export default function LearnDetailPage(): JSX.Element {
                             <Button
                                 onClick={() => handleReview('review')}
                                 variant="outline"
+                                disabled={reviewLoading !== null}
+                                isLoading={reviewLoading === 'review'}
+                                loadingText="Speichere"
                                 className="group h-auto py-4 px-1 flex flex-col gap-2 bg-background border-2 border-warning text-warning hover:bg-warning/10 shadow-sm"
                             >
                                 <IconSwap
@@ -508,6 +530,9 @@ export default function LearnDetailPage(): JSX.Element {
 
                             <Button
                                 onClick={() => handleReview('known')}
+                                disabled={reviewLoading !== null}
+                                isLoading={reviewLoading === 'known'}
+                                loadingText="Speichere"
                                 className="group h-auto py-4 px-1 flex flex-col gap-2 bg-success hover:bg-success/90 text-success-foreground shadow-sm"
                             >
                                 <IconSwap

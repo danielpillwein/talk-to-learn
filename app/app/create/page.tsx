@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
 import { UserIcon } from "@heroicons/react/24/outline";
@@ -436,13 +437,14 @@ export default function CreateDeckPage(): JSX.Element {
                 <div className="text-sm text-muted-foreground">Maximal 10 in der Free-Version.</div>
               </div>
             </div>
-            <Button
+            <LoadingButton
               className="w-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 md:w-auto"
               disabled={!canGenerate || isGenerating}
               onClick={handleGenerate}
-            >
-              {isGenerating ? "Generiere..." : "Fragen generieren"}
-            </Button>
+              isLoading={isGenerating}
+              loadingText="Generiere"
+              text="Fragen generieren"
+            />
           </CardContent>
         </Card>
 
@@ -500,9 +502,13 @@ export default function CreateDeckPage(): JSX.Element {
                 <Button variant="outline" onClick={handleAddCard}>
                   Karte hinzufügen
                 </Button>
-                <Button onClick={handleSave} disabled={isSaving}>
-                  {isSaving ? "Speichern..." : "Lernset speichern"}
-                </Button>
+                <LoadingButton
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  isLoading={isSaving}
+                  loadingText="Speichere"
+                  text="Lernset speichern"
+                />
               </div>
               {!user && (
                 <p className="text-sm text-muted-foreground">
