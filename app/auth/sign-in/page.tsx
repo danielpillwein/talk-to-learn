@@ -21,10 +21,10 @@ export default function SignInPage(): JSX.Element {
     callbackParam && callbackParam.startsWith("/") ? callbackParam : "/app/learn";
 
   useEffect(() => {
-    if (status === "authenticated") {
+    if (status === "authenticated" && callbackParam) {
       router.replace(callbackUrl);
     }
-  }, [status, router, callbackUrl]);
+  }, [status, router, callbackUrl, callbackParam]);
 
   if (status === "loading") {
     return (
