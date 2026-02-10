@@ -242,7 +242,7 @@ export default function CreateDeckPage(): JSX.Element {
   };
 
   return (
-    <main className="relative min-h-screen bg-background px-6 py-8">
+    <main className="relative py-8">
 
       {isGenerating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 backdrop-blur-sm">
@@ -260,7 +260,7 @@ export default function CreateDeckPage(): JSX.Element {
         </div>
       )}
 
-      <div className="relative mx-auto flex max-w-4xl flex-col gap-6">
+      <div className="relative flex flex-col gap-6">
         <header className="flex items-start justify-between gap-4 rounded-3xl border border-border bg-card px-6 py-5 shadow-sm">
           <div className="space-y-2">
             <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">

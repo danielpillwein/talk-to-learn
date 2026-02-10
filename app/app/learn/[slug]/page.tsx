@@ -372,8 +372,8 @@ export default function LearnDetailPage(): JSX.Element {
                 src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
                 strategy="afterInteractive"
             />
-            <main className="min-h-screen bg-background px-6 py-6">
-            <div className="max-w-4xl mx-auto space-y-6">
+            <main className="py-6">
+            <div className="space-y-6">
                 <div className="flex flex-col gap-4 rounded-3xl border border-border bg-card p-4 shadow-sm md:p-5">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div className="flex items-center gap-2 overflow-hidden">

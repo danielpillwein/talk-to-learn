@@ -33,9 +33,9 @@ export default function SignInPage(): JSX.Element {
           <div className="flex flex-col items-center gap-4">
             <span className="session-loader" aria-hidden="true" />
             <p className="text-sm text-muted-foreground">
-              Chill kurz. 
+              kurze Pause für dich :) 
               <br/><br/>
-              Checken gerade, ob du schon angemeldet bist :)
+              Checken gerade, ob du schon angemeldet bist...
             </p>
           </div>
         </Card>

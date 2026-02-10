@@ -124,11 +124,13 @@ export async function applyReviewOutcome({
       status,
       nextReview,
       reviewCount: 1,
+      lastActionAt: new Date(),
     },
     update: {
       status,
       nextReview,
       reviewCount: { increment: 1 },
+      lastActionAt: new Date(),
     },
   });
 }

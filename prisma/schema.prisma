@@ -89,6 +89,7 @@ model ReviewProgress {
   status      String   @default("new")
   reviewCount Int      @default(0)
   nextReview  DateTime?
+  lastActionAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   deck Deck @relation(fields: [deckId], references: [id], onDelete: Cascade)

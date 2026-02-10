@@ -25,6 +25,12 @@ export async function GET(): Promise<NextResponse> {
             _count: { _all: true },
         });
 
+        const lastActions = await db.reviewProgress.groupBy({
+            by: ['deckId'],
+            where: { userId: session.user.id, lastActionAt: { not: null } },
+            _max: { lastActionAt: true },
+        });
+
         const progressByDeck = grouped.reduce((acc, item) => {
             const current = acc[item.deckId] ?? { known: 0, learning: 0 };
             if (item.status === 'known') current.known += item._count._all;
@@ -32,6 +38,11 @@ export async function GET(): Promise<NextResponse> {
             acc[item.deckId] = current;
             return acc;
         }, {} as Record<string, { known: number; learning: number }>);
+
+        const lastActionByDeck = lastActions.reduce((acc, item) => {
+            acc[item.deckId] = item._max.lastActionAt ?? null;
+            return acc;
+        }, {} as Record<string, Date | null>);
 
         const files = decks.map((deck) => {
             const progress = progressByDeck[deck.id];
@@ -48,6 +59,7 @@ export async function GET(): Promise<NextResponse> {
                 known,
                 learning,
                 new: newCards,
+                lastLearnedAt: lastActionByDeck[deck.id] ?? null,
             };
         });
 

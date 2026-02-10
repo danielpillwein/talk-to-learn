@@ -8,7 +8,7 @@ export default async function AccountPage(): Promise<JSX.Element> {
   const session = await auth();
   if (!session) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background px-6 py-10">
+      <main className="flex min-h-[70vh] items-center justify-center py-10">
         <Card className="w-full max-w-md border-border shadow-sm">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold text-foreground">
@@ -31,8 +31,8 @@ export default async function AccountPage(): Promise<JSX.Element> {
   const user = session.user;
 
   return (
-    <main className="min-h-screen bg-background px-6 py-10 md:py-12">
-      <div className="mx-auto max-w-3xl space-y-6">
+    <main className="py-10">
+      <div className="space-y-6">
         <header className="flex flex-col gap-3 rounded-3xl border border-border bg-card px-6 py-5 shadow-sm">
           <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">
             Account
