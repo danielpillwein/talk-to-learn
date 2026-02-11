@@ -13,11 +13,35 @@ export async function GET(): Promise<NextResponse> {
                 id: true,
                 title: true,
                 sourceFilename: true,
+                hasBeenIntroduced: true,
+                learningPhase: true,
                 _count: { select: { cards: true } },
             },
             where: { ownerId: session.user.id },
             orderBy: { title: 'asc' },
         });
+
+        const deckIds = decks.map((deck) => deck.id);
+        const scaffoldPendingByDeck = deckIds.length
+            ? await db.card.groupBy({
+                  by: ['deckId'],
+                  where: {
+                      deckId: { in: deckIds },
+                      hasScaffoldedExplanation: false,
+                  },
+                  _count: { _all: true },
+              })
+            : [];
+        const seenByDeck = deckIds.length
+            ? await db.card.groupBy({
+                  by: ['deckId'],
+                  where: {
+                      deckId: { in: deckIds },
+                      seen: true,
+                  },
+                  _count: { _all: true },
+              })
+            : [];
 
         const grouped = await db.reviewProgress.groupBy({
             by: ['deckId', 'status'],
@@ -44,22 +68,46 @@ export async function GET(): Promise<NextResponse> {
             return acc;
         }, {} as Record<string, Date | null>);
 
+        const scaffoldPendingCountByDeck = scaffoldPendingByDeck.reduce((acc, item) => {
+            acc[item.deckId] = item._count._all;
+            return acc;
+        }, {} as Record<string, number>);
+        const seenCountByDeck = seenByDeck.reduce((acc, item) => {
+            acc[item.deckId] = item._count._all;
+            return acc;
+        }, {} as Record<string, number>);
+
         const files = decks.map((deck) => {
             const progress = progressByDeck[deck.id];
             const known = progress?.known ?? 0;
             const learning = progress?.learning ?? 0;
             const total = deck._count.cards;
-            const newCards = Math.max(0, total - known - learning);
+            const pendingScaffoldCount = scaffoldPendingCountByDeck[deck.id] ?? 0;
+
+            const learningPhaseStatus =
+                !deck.hasBeenIntroduced || deck.learningPhase === 'intro'
+                    ? 'intro'
+                    : deck.learningPhase === 'free'
+                    ? 'free'
+                    : pendingScaffoldCount > 0 || known < total
+                    ? 'scaffolded'
+                    : 'free';
+
+            const introKnown = seenCountByDeck[deck.id] ?? 0;
+            const effectiveKnown = learningPhaseStatus === 'intro' ? introKnown : known;
+            const effectiveLearning = learningPhaseStatus === 'intro' ? 0 : learning;
+            const effectiveNew = Math.max(0, total - effectiveKnown - effectiveLearning);
 
             return {
                 id: deck.id,
                 title: deck.title,
                 filename: deck.sourceFilename,
                 totalQuestions: total,
-                known,
-                learning,
-                new: newCards,
+                known: effectiveKnown,
+                learning: effectiveLearning,
+                new: effectiveNew,
                 lastLearnedAt: lastActionByDeck[deck.id] ?? null,
+                learningPhaseStatus,
             };
         });
 

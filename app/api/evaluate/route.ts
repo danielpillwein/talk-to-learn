@@ -35,6 +35,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         const file = formData.get('file') as File;
         const questionId = formData.get('questionId') as string;
         const deckId = formData.get('deckId') as string;
+        const evaluationModeRaw = formData.get('evaluationMode') as string | null;
+        const evaluationMode = evaluationModeRaw === 'supportive' ? 'supportive' : 'graded';
 
         if (!file || !questionId || !deckId) {
             return NextResponse.json({ error: 'Missing file, questionId or deckId' }, { status: 400 });
@@ -57,7 +59,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         });
 
         if (!deck) {
-            return NextResponse.json({ error: 'Deck not found' }, { status: 404 });
+            return NextResponse.json({ error: 'Lernset nicht gefunden' }, { status: 404 });
         }
 
         const questionIndex = parseInt(questionId, 10);
@@ -81,8 +83,18 @@ export async function POST(request: Request): Promise<NextResponse> {
 
         // 3. Bewertung mit OpenAI
         const systemPrompt = getSystemPrompt();
-
-        const evaluationPrompt = `Frage: ${question.question}
+        const evaluationPrompt =
+            evaluationMode === 'supportive'
+                ? `Modus: supportive
+Erzeuge nur positives, unterstützendes Feedback in JSON.
+Gib KEINEN score zurück.
+Antworte mit genau diesen Feldern:
+- "feedback": string
+- "recommendation": "understood" oder "review_later"
+Frage: ${question.question}
+Muster: ${question.answer}
+User: ${userAnswer}`
+                : `Frage: ${question.question}
         Muster: ${question.answer}
         User: ${userAnswer}`;
 
@@ -98,12 +110,38 @@ export async function POST(request: Request): Promise<NextResponse> {
 
         const result = JSON.parse(completion.choices[0].message.content || '{}');
 
+        if (evaluationMode === 'supportive') {
+            const rawRecommendation =
+                typeof result.recommendation === 'string' ? result.recommendation.toLowerCase().trim() : '';
+            const normalizedRecommendation =
+                rawRecommendation === 'understood' || rawRecommendation === 'verstanden'
+                    ? 'understood'
+                    : rawRecommendation === 'review_later' ||
+                      rawRecommendation === 'review' ||
+                      rawRecommendation === 'später' ||
+                      rawRecommendation === 'spaeter'
+                    ? 'review_later'
+                    : 'understood';
+
+            return NextResponse.json({
+                feedback: {
+                    type: 'supportive',
+                    message: result.feedback ?? 'Gute Richtung. Erklär es noch einmal mit deinen eigenen Worten.',
+                    recommendation: normalizedRecommendation,
+                    grading: { enabled: false },
+                },
+                userAnswer: userAnswer,
+                modelAnswer: question.answer,
+                question: question.question,
+            });
+        }
+
         return NextResponse.json({
-            score: result.score,
-            feedback: result.feedback,
+            score: typeof result.score === 'number' ? result.score : 0,
+            feedback: result.feedback ?? 'Keine Auswertung verfügbar.',
             userAnswer: userAnswer,
             modelAnswer: question.answer,
-            question: question.question
+            question: question.question,
         });
 
     } catch (error: any) {

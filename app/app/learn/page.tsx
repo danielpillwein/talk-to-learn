@@ -1,12 +1,13 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { InfoTooltip } from '@/components/ui/info-tooltip';
 import { ArrowPathIcon, DocumentTextIcon, PencilSquareIcon, UserIcon } from '@heroicons/react/24/outline';
 import { DocumentTextIcon as DocumentTextIconSolid, UserIcon as UserIconSolid } from '@heroicons/react/24/solid';
 import { IconSwap } from '@/components/ui/icon';
@@ -21,6 +22,7 @@ interface FileStats {
     learning: number;
     new: number;
     lastLearnedAt?: string | null;
+    learningPhaseStatus?: 'intro' | 'scaffolded' | 'free';
 }
 
 type SortKey = 'title-asc' | 'title-desc' | 'known-desc' | 'learning-desc' | 'new-desc' | 'total-desc' | 'last-learned-desc';
@@ -35,45 +37,81 @@ export default function LearnIndexPage(): JSX.Element {
     const [error, setError] = useState<string | null>(null);
     const [sortKey, setSortKey] = useState<SortKey>('last-learned-desc');
 
+    const fetchFiles = useCallback(async (showLoader: boolean) => {
+        if (showLoader) setIsLoadingFiles(true);
+
+        try {
+            const response = await fetch('/api/files', { cache: 'no-store' });
+            if (!response.ok) throw new Error('Failed to list files');
+            const data = await response.json();
+
+            const filesWithStats = data.files.map((f: { id: string; title: string; filename: string; totalQuestions: number; known?: number; learning?: number; new?: number; lastLearnedAt?: string | null; learningPhaseStatus?: 'intro' | 'scaffolded' | 'free' }) => {
+                const hasServerStats = typeof f.known === 'number' && typeof f.learning === 'number' && typeof f.new === 'number';
+                const stats = hasServerStats
+                    ? { known: f.known, learning: f.learning, new: f.new }
+                    : SpacedRepetitionManager.getStoredStats(f.id, f.totalQuestions);
+                return {
+                    ...f,
+                    ...stats,
+                };
+            });
+
+            setAvailableFiles(filesWithStats);
+            setError(null);
+        } catch (err) {
+            console.error(err);
+            setError('Konnte Lernsets nicht laden.');
+        } finally {
+            if (showLoader) setIsLoadingFiles(false);
+        }
+    }, []);
+
     useEffect(() => {
-        const fetchFiles = async () => {
-            try {
-                const response = await fetch('/api/files');
-                if (!response.ok) throw new Error('Failed to list files');
-                const data = await response.json();
+        void fetchFiles(true);
 
-                const filesWithStats = data.files.map((f: { id: string; title: string; filename: string; totalQuestions: number; known?: number; learning?: number; new?: number; lastLearnedAt?: string | null }) => {
-                    const hasServerStats = typeof f.known === 'number' && typeof f.learning === 'number' && typeof f.new === 'number';
-                    const stats = hasServerStats
-                        ? { known: f.known, learning: f.learning, new: f.new }
-                        : SpacedRepetitionManager.getStoredStats(f.id, f.totalQuestions);
-                    return {
-                        ...f,
-                        ...stats,
-                    };
-                });
-
-                setAvailableFiles(filesWithStats);
-            } catch (err) {
-                console.error(err);
-                setError('Konnte Lernsets nicht laden.');
-            } finally {
-                setIsLoadingFiles(false);
+        const refreshIfVisible = () => {
+            if (document.visibilityState === 'visible') {
+                void fetchFiles(false);
             }
         };
-        fetchFiles();
-    }, []);
+
+        window.addEventListener('focus', refreshIfVisible);
+        document.addEventListener('visibilitychange', refreshIfVisible);
+
+        return () => {
+            window.removeEventListener('focus', refreshIfVisible);
+            document.removeEventListener('visibilitychange', refreshIfVisible);
+        };
+    }, [fetchFiles]);
 
     const toSlug = (id: string) => encodeURIComponent(id);
 
-    const formatLastLearned = (value?: string | null) => {
-        if (!value) return 'Noch nicht gelernt';
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return 'Noch nicht gelernt';
-        return new Intl.DateTimeFormat('de-DE', {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-        }).format(date);
+    const getPhaseMeta = (phase?: FileStats['learningPhaseStatus']) => {
+        if (phase === 'intro') {
+            return {
+                label: 'Einführung',
+                className: 'bg-accent text-foreground',
+            };
+        }
+
+        if (phase === 'scaffolded') {
+            return {
+                label: 'Üben',
+                className: 'bg-accent text-foreground',
+            };
+        }
+
+        if (phase === 'free') {
+            return {
+                label: 'Erklären',
+                className: 'bg-accent text-foreground',
+            };
+        }
+
+        return {
+            label: 'Status unbekannt',
+            className: 'bg-secondary text-muted-foreground',
+        };
     };
 
     const sortedFiles = useMemo(() => {
@@ -136,8 +174,11 @@ export default function LearnIndexPage(): JSX.Element {
         <div className="relative">
             <div className="relative flex flex-col gap-6">
                 {isLoadingFiles ? (
-                    <div className="flex justify-center rounded-3xl border border-border bg-card p-10 shadow-sm">
+                    <div className="flex min-h-[calc(100vh-7rem)] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-card p-10 shadow-sm">
                         <ArrowPathIcon className="h-6 w-6 animate-spin text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                            Einen Moment, wir laden gerade deine Lernsets...
+                        </p>
                     </div>
                 ) : (
                     <div className="space-y-4">
@@ -146,27 +187,50 @@ export default function LearnIndexPage(): JSX.Element {
                             const knownPct = Math.round((file.known / total) * 100);
                             const learningPct = Math.round((file.learning / total) * 100);
                             const newPct = Math.max(0, 100 - knownPct - learningPct);
+                            const phaseMeta = getPhaseMeta(file.learningPhaseStatus);
 
                             return (
                                 <Card key={file.id} className="group border-border bg-card shadow-sm transition hover:border-foreground/20">
                                     <CardContent className="flex flex-col gap-4 p-5">
-                                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                                            <div className="flex items-start gap-3">
+                                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                            <div className="flex items-center gap-3">
                                                 <IconSwap
                                                     outline={DocumentTextIcon}
                                                     solid={DocumentTextIconSolid}
-                                                    className="mt-1 h-6 w-6 shrink-0 text-muted-foreground group-hover:text-foreground"
+                                                    className="h-6 w-6 shrink-0 text-muted-foreground group-hover:text-foreground"
                                                 />
-                                                <div className="min-w-0 flex-1">
-                                                    <h3 className="break-words text-lg font-semibold leading-tight text-foreground">
+                                                <div className="min-w-0 flex flex-1 items-center">
+                                                    <h3 className="break-words text-lg font-semibold leading-none text-foreground">
                                                         {file.title}
                                                     </h3>
-                                                    <p className="mt-1 text-sm text-muted-foreground">
-                                                        Zuletzt gelernt: {formatLastLearned(file.lastLearnedAt)}
-                                                    </p>
                                                 </div>
                                             </div>
-                                            <div className="flex flex-wrap gap-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className={`inline-flex h-10 items-center rounded-[999px] px-4 text-sm ${phaseMeta.className}`}>
+                                                    <span>{phaseMeta.label}</span>
+                                                    <InfoTooltip
+                                                        title="So funktionieren die Lernstufen"
+                                                        description={`1) Einführung: Frage + Lösung sehen
+2) Üben: Lösung in eigenen Worten erklären
+3) Erklären: nur mit der Frage erklären`}
+                                                        multilineDescription
+                                                        positionClassName="min-w-[20rem]"
+                                                        className="ml-0.5 [&>span]:h-5 [&>span]:w-5"
+                                                    >
+                                                        <svg
+                                                            viewBox="0 0 24 24"
+                                                            stroke="currentColor"
+                                                            className="h-4 w-4 fill-none text-current"
+                                                        >
+                                                            <path
+                                                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                                                strokeWidth="2"
+                                                                strokeLinejoin="round"
+                                                                strokeLinecap="round"
+                                                            />
+                                                        </svg>
+                                                    </InfoTooltip>
+                                                </span>
                                                 <Button asChild>
                                                     <Link href={`/app/learn/${toSlug(file.id)}`}>Lernen</Link>
                                                 </Button>
@@ -181,33 +245,37 @@ export default function LearnIndexPage(): JSX.Element {
                                             </div>
                                         </div>
 
-                                        <div className="space-y-2">
-                                            <div className="flex h-3 overflow-hidden rounded-full bg-secondary">
-                                                <div
-                                                    className="bg-success"
-                                                    style={{ width: `${knownPct}%` }}
-                                                />
-                                                <div
-                                                    className="bg-warning"
-                                                    style={{ width: `${learningPct}%` }}
-                                                />
-                                                <div
-                                                    className="bg-muted-foreground/30"
-                                                    style={{ width: `${newPct}%` }}
-                                                />
-                                            </div>
-                                            <div className="grid grid-cols-3 gap-2 text-sm text-muted-foreground">
-                                                <div className="flex items-center gap-1">
-                                                    <span className="h-2 w-2 rounded-full bg-success" />
-                                                    Gelernt {file.known}
+                                        <div>
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex h-3 flex-1 overflow-hidden rounded-full bg-secondary">
+                                                    <div
+                                                        className="bg-success"
+                                                        style={{ width: `${knownPct}%` }}
+                                                    />
+                                                    <div
+                                                        className="bg-warning"
+                                                        style={{ width: `${learningPct}%` }}
+                                                    />
+                                                    <div
+                                                        className="bg-muted-foreground/30"
+                                                        style={{ width: `${newPct}%` }}
+                                                    />
                                                 </div>
-                                                <div className="flex items-center gap-1">
-                                                    <span className="h-2 w-2 rounded-full bg-warning" />
-                                                    Wiederholen {file.learning}
-                                                </div>
-                                                <div className="flex items-center gap-1">
-                                                    <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
-                                                    Offen {file.new}
+                                                <div className="shrink-0 text-sm text-muted-foreground">
+                                                    (
+                                                    <span className="mx-1 inline-flex items-center gap-1">
+                                                        <span className="h-2 w-2 rounded-full bg-success" />
+                                                        {file.known}
+                                                    </span>
+                                                    <span className="mx-1 inline-flex items-center gap-1">
+                                                        <span className="h-2 w-2 rounded-full bg-warning" />
+                                                        {file.learning}
+                                                    </span>
+                                                    <span className="mx-1 inline-flex items-center gap-1">
+                                                        <span className="h-2 w-2 rounded-full bg-muted-foreground" />
+                                                        {file.new}
+                                                    </span>
+                                                    )
                                                 </div>
                                             </div>
                                         </div>

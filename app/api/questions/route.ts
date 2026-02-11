@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
+import { deriveLearningStage, ensureDeckProgress } from '@/lib/progress';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
     try {
@@ -17,26 +18,46 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
         const deck = await db.deck.findUnique({
             where: { id: deckId, ownerId: session.user.id },
-            select: { id: true, title: true },
+            select: { id: true, title: true, hasBeenIntroduced: true, learningPhase: true },
         });
 
         if (!deck) {
-            return NextResponse.json({ error: 'Deck not found' }, { status: 404 });
+            return NextResponse.json({ error: 'Lernset nicht gefunden' }, { status: 404 });
         }
 
         const cards = await db.card.findMany({
             where: { deckId: deck.id },
             orderBy: { createdAt: 'asc' },
-            select: { question: true, answer: true },
+            select: {
+                question: true,
+                answer: true,
+                seen: true,
+                hasScaffoldedExplanation: true,
+                state: true,
+            },
         });
 
         const questions = cards.map((card, index) => ({
             id: index,
             question: card.question,
             modelAnswer: card.answer,
+            seen: card.seen,
+            hasScaffoldedExplanation: card.hasScaffoldedExplanation,
+            state: card.state,
         }));
 
-        return NextResponse.json({ questions, deckTitle: deck.title });
+        const { progress } = await ensureDeckProgress(session.user.id, deck.id);
+
+        return NextResponse.json({
+            questions,
+            deckTitle: deck.title,
+            deckLearningPhase: deriveLearningStage({
+                hasBeenIntroduced: deck.hasBeenIntroduced,
+                learningPhase: deck.learningPhase,
+                cards: questions,
+                progress,
+            }),
+        });
     } catch (error) {
         console.error('Error loading questions:', error);
         return NextResponse.json(

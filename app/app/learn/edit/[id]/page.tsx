@@ -55,14 +55,14 @@ export default function EditDeckPage(): JSX.Element {
       try {
         const response = await fetch(`/api/decks/${encodeURIComponent(deckId)}`);
         if (!response.ok) {
-          throw new Error("Failed to load deck");
+          throw new Error("Failed to load learning set");
         }
         const data = (await response.json()) as DeckPayload;
         setTitle(data.title ?? "");
         setCards(data.cards ?? []);
       } catch (err) {
         console.error(err);
-        setError("Deck konnte nicht geladen werden.");
+        setError("Lernset konnte nicht geladen werden.");
       } finally {
         setIsLoading(false);
       }
@@ -118,7 +118,7 @@ export default function EditDeckPage(): JSX.Element {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to save deck");
+        throw new Error("Failed to save learning set");
       }
 
       setSuccess("Änderungen gespeichert.");
@@ -166,7 +166,7 @@ export default function EditDeckPage(): JSX.Element {
               Lernset bearbeiten
             </p>
             <h1 className="text-3xl font-bold text-foreground">
-              Deck anpassen
+              Lernset anpassen
             </h1>
             <p className="text-sm text-muted-foreground">
               Überarbeite Fragen, ergänze neue Karten oder setze den Fortschritt zurück.
@@ -204,7 +204,7 @@ export default function EditDeckPage(): JSX.Element {
         <Card className="border-border bg-card shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-foreground">
-              Deck-Details
+              Lernset-Details
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -216,7 +216,7 @@ export default function EditDeckPage(): JSX.Element {
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm shadow-sm focus:border-foreground/20 focus:outline-none"
-                placeholder="Deck-Titel"
+                placeholder="Lernset-Titel"
               />
             </div>
             <div className="flex flex-wrap gap-2">
@@ -254,7 +254,7 @@ export default function EditDeckPage(): JSX.Element {
             <CardContent className="space-y-4">
               {cards.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Dieses Deck hat noch keine Karten. Ergänze neue Fragen.
+                  Dieses Lernset hat noch keine Karten. Ergänze neue Fragen.
                 </p>
               )}
               {cards.map((card, index) => (

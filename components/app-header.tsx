@@ -103,7 +103,7 @@ export function AppHeader(): JSX.Element {
               href="/app/create"
               className="hidden rounded-full bg-warning px-5 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-all duration-150 ease-out hover:bg-warning/90 hover:shadow-md hover:-translate-y-[1px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:inline-flex"
             >
-              Neues Deck
+              Neues Lernset
             </Link>
             <div className="relative hidden md:block" ref={menuRef}>
               <button
@@ -180,14 +180,14 @@ export function AppHeader(): JSX.Element {
           className={`md:hidden ${mobileLearnMenuOpen ? "pointer-events-auto" : "pointer-events-none"}`}
         >
           <div
-            className={`fixed inset-0 z-40 bg-black/30 transition-opacity duration-200 ${
+            className={`fixed inset-0 z-[998] bg-black/30 transition-opacity duration-200 ${
               mobileLearnMenuOpen ? "opacity-100" : "opacity-0"
             }`}
             onClick={() => setMobileLearnMenuOpen(false)}
             aria-hidden="true"
           />
           <div
-            className={`fixed right-0 top-0 z-50 h-full w-80 bg-background shadow-2xl transition-transform duration-200 ease-out ${
+            className={`fixed right-0 top-0 z-[999] h-full w-80 bg-background shadow-2xl transition-transform duration-200 ease-out ${
               mobileLearnMenuOpen ? "translate-x-0" : "translate-x-full"
             }`}
           >
@@ -215,7 +215,7 @@ export function AppHeader(): JSX.Element {
                   onClick={() => setMobileLearnMenuOpen(false)}
                   className="rounded-2xl bg-warning px-3 py-3 font-semibold text-primary-foreground shadow-sm transition hover:bg-warning/90"
                 >
-                  Neues Deck
+                  Neues Lernset
                 </Link>
                 <div className="rounded-2xl bg-muted/30 p-3">
                   <div className="text-sm font-semibold text-muted-foreground">Profil</div>

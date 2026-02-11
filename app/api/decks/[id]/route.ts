@@ -29,13 +29,13 @@ export async function GET(request: NextRequest, context: { params: { id: string 
     });
 
     if (!deck) {
-      return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+      return NextResponse.json({ error: "Lernset nicht gefunden" }, { status: 404 });
     }
 
     return NextResponse.json(deck);
   } catch (error) {
     console.error("Error loading deck:", error);
-    return NextResponse.json({ error: "Failed to load deck" }, { status: 500 });
+    return NextResponse.json({ error: "Lernset konnte nicht geladen werden" }, { status: 500 });
   }
 }
 
@@ -69,7 +69,7 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
     });
 
     if (!deck) {
-      return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+      return NextResponse.json({ error: "Lernset nicht gefunden" }, { status: 404 });
     }
 
     await db.$transaction(async (tx) => {
@@ -121,6 +121,6 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Error updating deck:", error);
-    return NextResponse.json({ error: "Failed to update deck" }, { status: 500 });
+    return NextResponse.json({ error: "Lernset konnte nicht aktualisiert werden" }, { status: 500 });
   }
 }

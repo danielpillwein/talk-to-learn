@@ -60,6 +60,8 @@ model Deck {
   title          String
   sourceFilename String   @unique
   sourceType     String   @default("csv")
+  hasBeenIntroduced Boolean @default(false)
+  learningPhase  String   @default("intro")
   ownerId        String?
   createdAt      DateTime @default(now())
 
@@ -73,6 +75,9 @@ model Card {
   deckId    String
   question  String
   answer    String
+  seen      Boolean  @default(false)
+  hasScaffoldedExplanation Boolean @default(false)
+  state     String   @default("unseen")
   createdAt DateTime @default(now())
 
   deck Deck @relation(fields: [deckId], references: [id], onDelete: Cascade)

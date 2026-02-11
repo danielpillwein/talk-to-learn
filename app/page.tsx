@@ -66,7 +66,7 @@ export default function LandingPage(): JSX.Element {
       tone: "bg-warning/10 border-warning/40",
     },
     {
-      title: "Deck-Management",
+      title: "Lernset-Management",
       text: "Organisiere Fächer, Themen und Prüfungen übersichtlich.",
       span: "lg:col-span-5",
       tone: "bg-muted/60 border-border",
@@ -121,7 +121,7 @@ export default function LandingPage(): JSX.Element {
   const stats = [
     { label: "Fragen geübt", value: "28.400+" },
     { label: "Minuten gesprochen", value: "9.600+" },
-    { label: "Decks erstellt", value: "1.120+" },
+    { label: "Lernsets erstellt", value: "1.120+" },
   ];
 
   const faqs = [
@@ -146,7 +146,7 @@ export default function LandingPage(): JSX.Element {
         "Im Moment ist es auf Einzel-Lernsessions optimiert.",
     },
     {
-      question: "Kann ich die Decks exportieren?",
+      question: "Kann ich die Lernsets exportieren?",
       answer:
         "Ja, Export und Wiederholungen sind Teil des Pro-Plans.",
     },
@@ -399,7 +399,7 @@ export default function LandingPage(): JSX.Element {
                 Begrenzte Uploads und Basisfeedback für schnelle Sessions.
               </p>
               <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-                <li>Bis zu 1 Deck</li>
+                <li>Bis zu 1 Lernset</li>
                 <li>Basis-Feedback</li>
                 <li>Standard-Export</li>
               </ul>
@@ -419,7 +419,7 @@ export default function LandingPage(): JSX.Element {
                 Mehr Uploads, tiefere Auswertung, Export & Analysen.
               </p>
               <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-                <li>Mehrere Decks & Uploads</li>
+                <li>Mehrere Lernsets & Uploads</li>
                 <li>Erweiterte Analyse</li>
                 <li>Export & Lernverlauf</li>
               </ul>
