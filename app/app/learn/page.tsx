@@ -1,41 +1,239 @@
 'use client';
 
-import Image from 'next/image';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InfoTooltip } from '@/components/ui/info-tooltip';
-import { ArrowPathIcon, DocumentTextIcon, PencilSquareIcon, UserIcon } from '@heroicons/react/24/outline';
-import { DocumentTextIcon as DocumentTextIconSolid, UserIcon as UserIconSolid } from '@heroicons/react/24/solid';
-import { IconSwap } from '@/components/ui/icon';
+import { ArrowPathIcon, ChevronDownIcon, MagnifyingGlassIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { SpacedRepetitionManager } from '@/lib/spaced-repetition';
 
 interface FileStats {
     id: string;
     title: string;
     filename: string;
+    description?: string | null;
+    searchText?: string;
+    searchCards?: Array<{ question: string; answer: string }>;
     totalQuestions: number;
     known: number;
     learning: number;
     new: number;
-    lastLearnedAt?: string | null;
+    createdAt?: string | null;
+    lastEditedAt?: string | null;
     learningPhaseStatus?: 'intro' | 'scaffolded' | 'free';
 }
 
-type SortKey = 'title-asc' | 'title-desc' | 'known-desc' | 'learning-desc' | 'new-desc' | 'total-desc' | 'last-learned-desc';
+type SortOption =
+    | 'lastCreatedDesc'
+    | 'alphaAsc'
+    | 'alphaDesc'
+    | 'progressDesc'
+    | 'progressAsc';
+
+const DEFAULT_SORT: SortOption = 'lastCreatedDesc';
+
+type QuestionAnswerMatch = {
+    location: string;
+    snippet: string;
+    matchStart: number;
+    matchLength: number;
+    hasLeadingEllipsis: boolean;
+    hasTrailingEllipsis: boolean;
+};
+
+function findCaseInsensitiveIndex(text: string, query: string): number {
+    return text.toLocaleLowerCase('de').indexOf(query.toLocaleLowerCase('de'));
+}
+
+function createSnippet(text: string, matchIndex: number, matchLength: number): QuestionAnswerMatch {
+    const radius = 56;
+    const start = Math.max(0, matchIndex - radius);
+    const end = Math.min(text.length, matchIndex + matchLength + radius);
+    const snippet = text.slice(start, end);
+
+    return {
+        location: '',
+        snippet,
+        matchStart: Math.max(0, matchIndex - start),
+        matchLength,
+        hasLeadingEllipsis: start > 0,
+        hasTrailingEllipsis: end < text.length,
+    };
+}
+
+function findQuestionAnswerMatch(file: FileStats, query: string): QuestionAnswerMatch | null {
+    const normalized = query.trim();
+    if (!normalized) return null;
+
+    const cards = file.searchCards ?? [];
+    for (let index = 0; index < cards.length; index += 1) {
+        const card = cards[index];
+        const questionIndex = findCaseInsensitiveIndex(card.question, normalized);
+        if (questionIndex >= 0) {
+            const snippet = createSnippet(card.question, questionIndex, normalized.length);
+            return { ...snippet, location: `Frage ${index + 1}` };
+        }
+
+        const answerIndex = findCaseInsensitiveIndex(card.answer, normalized);
+        if (answerIndex >= 0) {
+            const snippet = createSnippet(card.answer, answerIndex, normalized.length);
+            return { ...snippet, location: `Antwort ${index + 1}` };
+        }
+    }
+
+    return null;
+}
+
+function renderHighlightedSnippet(snippet: string, matchStart: number, matchLength: number): JSX.Element {
+    const safeStart = Math.max(0, Math.min(matchStart, snippet.length));
+    const safeEnd = Math.max(safeStart, Math.min(safeStart + matchLength, snippet.length));
+    const before = snippet.slice(0, safeStart);
+    const highlight = snippet.slice(safeStart, safeEnd);
+    const after = snippet.slice(safeEnd);
+
+    return (
+        <span>
+            {before}
+            <mark className="bg-foreground px-[1px] text-background">{highlight}</mark>
+            {after}
+        </span>
+    );
+}
+
+function renderHighlightedText(text: string, query: string): JSX.Element {
+    const trimmed = query.trim();
+    if (!trimmed) return <>{text}</>;
+    const matchIndex = findCaseInsensitiveIndex(text, trimmed);
+    if (matchIndex < 0) return <>{text}</>;
+    return renderHighlightedSnippet(text, matchIndex, trimmed.length);
+}
+
+function SearchSortBar(props: {
+    searchInput: string;
+    onSearchChange: (value: string) => void;
+    onSearchClear: () => void;
+    sortOption: SortOption;
+    onSortChange: (value: SortOption) => void;
+}): JSX.Element {
+    const { searchInput, onSearchChange, onSearchClear, sortOption, onSortChange } = props;
+    const [isSortOpen, setIsSortOpen] = useState(false);
+    const sortRef = useRef<HTMLDivElement | null>(null);
+
+    const sortOptions: Array<{ value: SortOption; label: string }> = [
+        { value: 'lastCreatedDesc', label: 'Zuletzt erstellt' },
+        { value: 'alphaAsc', label: 'Alphabetisch (A-Z)' },
+        { value: 'alphaDesc', label: 'Alphabetisch (Z-A)' },
+        { value: 'progressDesc', label: 'Fortschritt (absteigend)' },
+        { value: 'progressAsc', label: 'Fortschritt (aufsteigend)' },
+    ];
+
+    const selectedSortLabel = sortOptions.find((entry) => entry.value === sortOption)?.label ?? 'Zuletzt erstellt';
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (!sortRef.current) return;
+            if (!sortRef.current.contains(event.target as Node)) {
+                setIsSortOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+    return (
+        <div className="mb-5 flex w-full flex-col gap-2 px-4 md:mb-6 md:flex-row md:items-center md:justify-between md:px-0">
+            <div className="w-full md:w-[360px]">
+                <div className="relative">
+                    <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                        type="text"
+                        value={searchInput}
+                        onChange={(event) => onSearchChange(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Escape') onSearchClear();
+                        }}
+                        placeholder="Decks durchsuchen…"
+                        className="h-11 w-full rounded-md border border-border bg-background pl-9 pr-10 text-sm text-foreground shadow-sm focus:border-foreground/20 focus:outline-none"
+                    />
+                    {searchInput.trim() && (
+                        <button
+                            type="button"
+                            onClick={onSearchClear}
+                            className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                            aria-label="Suche leeren"
+                        >
+                            <XMarkIcon className="h-4 w-4" />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div ref={sortRef} className="relative w-full md:w-[260px]">
+                <button
+                    type="button"
+                    onClick={() => setIsSortOpen((prev) => !prev)}
+                    className="flex h-11 w-full items-center justify-between rounded-md border border-border bg-background px-3 text-sm text-foreground shadow-sm transition hover:border-foreground/30 focus:border-foreground/20 focus:outline-none"
+                    aria-haspopup="listbox"
+                    aria-expanded={isSortOpen}
+                >
+                    <span className="truncate text-left">
+                        <span className="text-muted-foreground">Sortierung: </span>
+                        <span>{selectedSortLabel}</span>
+                    </span>
+                    <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+
+                {isSortOpen && (
+                    <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-background shadow-lg">
+                        <ul role="listbox" className="py-1">
+                            {sortOptions.map((entry) => {
+                                const selected = entry.value === sortOption;
+                                return (
+                                    <li key={entry.value}>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                onSortChange(entry.value);
+                                                setIsSortOpen(false);
+                                            }}
+                                            className={`w-full px-3 py-2 text-left text-sm transition ${
+                                                selected
+                                                    ? 'bg-secondary text-secondary-foreground'
+                                                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
+                                            }`}
+                                            role="option"
+                                            aria-selected={selected}
+                                        >
+                                            {entry.label}
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
 
 export default function LearnIndexPage(): JSX.Element {
-    const { data: session } = useSession();
-    const user = session?.user;
-    const [avatarFailed, setAvatarFailed] = useState(false);
-
-    const [availableFiles, setAvailableFiles] = useState<FileStats[]>([]);
+    const [items, setItems] = useState<FileStats[]>([]);
     const [isLoadingFiles, setIsLoadingFiles] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [sortKey, setSortKey] = useState<SortKey>('last-learned-desc');
+
+    const [searchInput, setSearchInput] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sortOption, setSortOption] = useState<SortOption>(DEFAULT_SORT);
+    const clearSearch = () => {
+        setSearchInput('');
+        setSearchTerm('');
+    };
 
     const fetchFiles = useCallback(async (showLoader: boolean) => {
         if (showLoader) setIsLoadingFiles(true);
@@ -45,18 +243,40 @@ export default function LearnIndexPage(): JSX.Element {
             if (!response.ok) throw new Error('Failed to list files');
             const data = await response.json();
 
-            const filesWithStats = data.files.map((f: { id: string; title: string; filename: string; totalQuestions: number; known?: number; learning?: number; new?: number; lastLearnedAt?: string | null; learningPhaseStatus?: 'intro' | 'scaffolded' | 'free' }) => {
+            const filesWithStats = data.files.map((f: {
+                id: string;
+                title: string;
+                filename: string;
+                description?: string | null;
+                searchText?: string;
+                searchCards?: Array<{ question?: string; answer?: string }>;
+                totalQuestions: number;
+                known?: number;
+                learning?: number;
+                new?: number;
+                createdAt?: string | null;
+                lastEditedAt?: string | null;
+                learningPhaseStatus?: 'intro' | 'scaffolded' | 'free';
+            }) => {
                 const hasServerStats = typeof f.known === 'number' && typeof f.learning === 'number' && typeof f.new === 'number';
                 const stats = hasServerStats
                     ? { known: f.known, learning: f.learning, new: f.new }
                     : SpacedRepetitionManager.getStoredStats(f.id, f.totalQuestions);
+
                 return {
                     ...f,
                     ...stats,
+                    searchText: String(f.searchText ?? '').toLocaleLowerCase('de'),
+                    searchCards: Array.isArray(f.searchCards)
+                        ? f.searchCards.map((card) => ({
+                              question: String(card.question ?? ''),
+                              answer: String(card.answer ?? ''),
+                          }))
+                        : [],
                 };
             });
 
-            setAvailableFiles(filesWithStats);
+            setItems(filesWithStats);
             setError(null);
         } catch (err) {
             console.error(err);
@@ -68,21 +288,17 @@ export default function LearnIndexPage(): JSX.Element {
 
     useEffect(() => {
         void fetchFiles(true);
+    }, [fetchFiles]);
 
-        const refreshIfVisible = () => {
-            if (document.visibilityState === 'visible') {
-                void fetchFiles(false);
-            }
-        };
-
-        window.addEventListener('focus', refreshIfVisible);
-        document.addEventListener('visibilitychange', refreshIfVisible);
+    useEffect(() => {
+        const handle = window.setTimeout(() => {
+            setSearchTerm(searchInput.trim());
+        }, 300);
 
         return () => {
-            window.removeEventListener('focus', refreshIfVisible);
-            document.removeEventListener('visibilitychange', refreshIfVisible);
+            window.clearTimeout(handle);
         };
-    }, [fetchFiles]);
+    }, [searchInput]);
 
     const toSlug = (id: string) => encodeURIComponent(id);
 
@@ -114,61 +330,62 @@ export default function LearnIndexPage(): JSX.Element {
         };
     };
 
-    const sortedFiles = useMemo(() => {
-        const files = [...availableFiles];
-        const byTitle = (a: FileStats, b: FileStats) => a.title.localeCompare(b.title, 'de');
-        const byLastLearned = (a: FileStats, b: FileStats) => {
-            const aTime = a.lastLearnedAt ? new Date(a.lastLearnedAt).getTime() : 0;
-            const bTime = b.lastLearnedAt ? new Date(b.lastLearnedAt).getTime() : 0;
-            return bTime - aTime;
+    const visibleItems = useMemo(() => {
+        const q = searchTerm.toLocaleLowerCase('de');
+
+        const stageRank = (stage?: FileStats['learningPhaseStatus']) => {
+            if (stage === 'free') return 2;
+            if (stage === 'scaffolded') return 1;
+            return 0;
         };
 
-        files.sort((a, b) => {
-            switch (sortKey) {
-                case 'title-asc':
-                    return byTitle(a, b);
-                case 'title-desc':
-                    return byTitle(b, a);
-                case 'known-desc':
-                    return b.known - a.known || byTitle(a, b);
-                case 'learning-desc':
-                    return b.learning - a.learning || byTitle(a, b);
-                case 'new-desc':
-                    return b.new - a.new || byTitle(a, b);
-                case 'total-desc':
-                    return b.totalQuestions - a.totalQuestions || byTitle(a, b);
-                case 'last-learned-desc':
-                default:
-                    return byLastLearned(a, b) || byTitle(a, b);
-            }
+        const getTime = (value?: string | null) => {
+            if (!value) return 0;
+            const time = new Date(value).getTime();
+            return Number.isFinite(time) ? time : 0;
+        };
+
+        const filtered = items.filter((item) => {
+            if (!q) return true;
+
+            const fallback = `${item.title} ${String(item.description ?? '')}`.toLocaleLowerCase('de');
+            const haystack = item.searchText && item.searchText.trim() ? item.searchText : fallback;
+            return haystack.includes(q);
         });
 
-        return files;
-    }, [availableFiles, sortKey]);
+        filtered.sort((a, b) => {
+            const byTitle = a.title.localeCompare(b.title, 'de', { sensitivity: 'base' });
 
-    const avatarContent = useMemo(() => {
-        if (user?.image && !avatarFailed) {
-            return (
-                <Image
-                    src={user.image}
-                    alt="Account"
-                    width={32}
-                    height={32}
-                    sizes="32px"
-                    className="h-8 w-8 rounded-full object-cover"
-                    onError={() => setAvatarFailed(true)}
-                />
-            );
-        }
+            if (sortOption === 'alphaAsc') return byTitle;
+            if (sortOption === 'alphaDesc') return byTitle * -1;
 
-        return (
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                {user?.name?.charAt(0) ?? (
-                    <IconSwap outline={UserIcon} solid={UserIconSolid} className="h-4 w-4" />
-                )}
-            </span>
-        );
-    }, [user?.image, user?.name, avatarFailed]);
+            if (sortOption === 'lastCreatedDesc') {
+                return getTime(b.createdAt) - getTime(a.createdAt) || byTitle;
+            }
+
+            if (sortOption === 'progressDesc') {
+                const byStage = stageRank(b.learningPhaseStatus) - stageRank(a.learningPhaseStatus);
+                if (byStage !== 0) return byStage;
+
+                const aProgress = a.totalQuestions > 0 ? a.known / a.totalQuestions : 0;
+                const bProgress = b.totalQuestions > 0 ? b.known / b.totalQuestions : 0;
+                return bProgress - aProgress || byTitle;
+            }
+
+            if (sortOption === 'progressAsc') {
+                const byStage = stageRank(a.learningPhaseStatus) - stageRank(b.learningPhaseStatus);
+                if (byStage !== 0) return byStage;
+
+                const aProgress = a.totalQuestions > 0 ? a.known / a.totalQuestions : 0;
+                const bProgress = b.totalQuestions > 0 ? b.known / b.totalQuestions : 0;
+                return aProgress - bProgress || byTitle;
+            }
+
+            return getTime(b.createdAt) - getTime(a.createdAt) || byTitle;
+        });
+
+        return filtered;
+    }, [items, searchTerm, sortOption]);
 
     return (
         <div className="relative">
@@ -182,28 +399,58 @@ export default function LearnIndexPage(): JSX.Element {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {sortedFiles.map((file) => {
+                        <SearchSortBar
+                            searchInput={searchInput}
+                            onSearchChange={setSearchInput}
+                            onSearchClear={clearSearch}
+                            sortOption={sortOption}
+                            onSortChange={setSortOption}
+                        />
+
+                        {items.length === 0 && (
+                            <div className="rounded-3xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
+                                <p className="text-base text-foreground">Du hast noch keine Lernsets.</p>
+                                <p className="mt-2 text-sm text-muted-foreground">Erstelle ein erstes Set, um direkt loszulegen.</p>
+                                <div className="mt-4">
+                                    <Button asChild>
+                                        <Link href="/app/create?new=1">Erstes Lernset erstellen</Link>
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {items.length > 0 && visibleItems.length === 0 && (
+                            <div className="rounded-3xl bg-card p-8 text-center text-muted-foreground shadow-sm">
+                                <p className="text-base text-foreground">Keine Ergebnisse für '{searchTerm}'</p>
+                                <div className="mt-4">
+                                    <Button
+                                        variant="outline"
+                                        onClick={clearSearch}
+                                    >
+                                        Suche zurücksetzen
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {visibleItems.map((file) => {
                             const total = file.totalQuestions || 1;
                             const knownPct = Math.round((file.known / total) * 100);
                             const learningPct = Math.round((file.learning / total) * 100);
                             const newPct = Math.max(0, 100 - knownPct - learningPct);
+                            const showKnownLearningDivider = knownPct > 0 && learningPct > 0;
                             const phaseMeta = getPhaseMeta(file.learningPhaseStatus);
+                            const searchMatch =
+                                searchTerm.trim().length > 0 ? findQuestionAnswerMatch(file, searchTerm) : null;
 
                             return (
                                 <Card key={file.id} className="group border-border bg-card shadow-sm transition hover:border-foreground/20">
                                     <CardContent className="flex flex-col gap-4 p-5">
                                         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <IconSwap
-                                                    outline={DocumentTextIcon}
-                                                    solid={DocumentTextIconSolid}
-                                                    className="h-6 w-6 shrink-0 text-muted-foreground group-hover:text-foreground"
-                                                />
-                                                <div className="min-w-0 flex flex-1 items-center">
-                                                    <h3 className="break-words text-lg font-semibold leading-none text-foreground">
-                                                        {file.title}
-                                                    </h3>
-                                                </div>
+                                            <div className="min-w-0 flex flex-1 items-center">
+                                                <h3 className="break-words text-lg font-semibold leading-none text-foreground">
+                                                    {renderHighlightedText(file.title, searchTerm)}
+                                                </h3>
                                             </div>
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <span className={`inline-flex h-10 items-center rounded-[999px] px-4 text-sm ${phaseMeta.className}`}>
@@ -245,49 +492,63 @@ export default function LearnIndexPage(): JSX.Element {
                                             </div>
                                         </div>
 
-                                        <div>
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex h-3 flex-1 overflow-hidden rounded-full bg-secondary">
-                                                    <div
-                                                        className="bg-success"
-                                                        style={{ width: `${knownPct}%` }}
-                                                    />
-                                                    <div
-                                                        className="bg-warning"
-                                                        style={{ width: `${learningPct}%` }}
-                                                    />
-                                                    <div
-                                                        className="bg-muted-foreground/30"
-                                                        style={{ width: `${newPct}%` }}
-                                                    />
-                                                </div>
-                                                <div className="shrink-0 text-sm text-muted-foreground">
-                                                    (
-                                                    <span className="mx-1 inline-flex items-center gap-1">
-                                                        <span className="h-2 w-2 rounded-full bg-success" />
-                                                        {file.known}
-                                                    </span>
-                                                    <span className="mx-1 inline-flex items-center gap-1">
-                                                        <span className="h-2 w-2 rounded-full bg-warning" />
-                                                        {file.learning}
-                                                    </span>
-                                                    <span className="mx-1 inline-flex items-center gap-1">
-                                                        <span className="h-2 w-2 rounded-full bg-muted-foreground" />
-                                                        {file.new}
-                                                    </span>
-                                                    )
-                                                </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex h-3 flex-1 overflow-hidden rounded-full border border-secondary">
+                                                <div
+                                                    className="bg-success"
+                                                    style={{
+                                                        width: `${knownPct}%`,
+                                                        borderRightWidth: showKnownLearningDivider ? '1px' : '0',
+                                                        borderRightStyle: 'solid',
+                                                        borderRightColor: 'var(--background)',
+                                                    }}
+                                                />
+                                                <div
+                                                    className="bg-warning"
+                                                    style={{ width: `${learningPct}%` }}
+                                                />
+                                                <div
+                                                    className="bg-muted-foreground/30"
+                                                    style={{ width: `${newPct}%` }}
+                                                />
+                                            </div>
+                                            <div className="shrink-0 text-sm text-muted-foreground">
+                                                (
+                                                <span className="mx-1 inline-flex items-center gap-1">
+                                                    <span className="h-2 w-2 rounded-full bg-success" />
+                                                    {file.known}
+                                                </span>
+                                                <span className="mx-1 inline-flex items-center gap-1">
+                                                    <span className="h-2 w-2 rounded-full bg-warning" />
+                                                    {file.learning}
+                                                </span>
+                                                <span className="mx-1 inline-flex items-center gap-1">
+                                                    <span className="h-2 w-2 rounded-full bg-muted-foreground" />
+                                                    {file.new}
+                                                </span>
+                                                )
                                             </div>
                                         </div>
+                                        {searchMatch && (
+                                            <div className="mt-3 rounded-xl border border-border/70 bg-background px-3 py-2 text-sm">
+                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                                                    Treffer in {searchMatch.location}
+                                                </p>
+                                                <p className="mt-1 text-muted-foreground">
+                                                    {searchMatch.hasLeadingEllipsis ? '… ' : ''}
+                                                    {renderHighlightedSnippet(
+                                                        searchMatch.snippet,
+                                                        searchMatch.matchStart,
+                                                        searchMatch.matchLength
+                                                    )}
+                                                    {searchMatch.hasTrailingEllipsis ? ' …' : ''}
+                                                </p>
+                                            </div>
+                                        )}
                                     </CardContent>
                                 </Card>
                             );
                         })}
-                        {sortedFiles.length === 0 && (
-                            <div className="rounded-3xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
-                                Keine Lernsets gefunden.
-                            </div>
-                        )}
                     </div>
                 )}
 

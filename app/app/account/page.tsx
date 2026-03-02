@@ -79,7 +79,7 @@ export default async function AccountPage(): Promise<JSX.Element> {
               <Link href="/app/learn">Zurück zur Lernsession</Link>
             </Button>
             <Button asChild variant="outline" className="w-full md:w-auto">
-              <Link href="/app/create">Neues Lernset erstellen</Link>
+              <Link href="/app/create?new=1">Neues Lernset erstellen</Link>
             </Button>
             <AccountActions />
           </CardContent>

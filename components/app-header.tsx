@@ -100,7 +100,7 @@ export function AppHeader(): JSX.Element {
               Zu meinen Lernsets
             </Link>
             <Link
-              href="/app/create"
+              href="/app/create?new=1"
               className="hidden rounded-full bg-warning px-5 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-all duration-150 ease-out hover:bg-warning/90 hover:shadow-md hover:-translate-y-[1px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:inline-flex"
             >
               Neues Lernset
@@ -211,7 +211,7 @@ export function AppHeader(): JSX.Element {
                   Zu meinen Lernsets
                 </Link>
                 <Link
-                  href="/app/create"
+                  href="/app/create?new=1"
                   onClick={() => setMobileLearnMenuOpen(false)}
                   className="rounded-2xl bg-warning px-3 py-3 font-semibold text-primary-foreground shadow-sm transition hover:bg-warning/90"
                 >

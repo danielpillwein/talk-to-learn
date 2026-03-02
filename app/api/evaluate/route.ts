@@ -2,8 +2,7 @@ import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import fs from 'fs';
-import path from 'path';
+import { loadPrompt, loadRenderedPrompt } from '@/lib/prompt-store';
 
 const groq = new OpenAI({
     apiKey: process.env.GROQ_API_KEY,
@@ -13,17 +12,6 @@ const groq = new OpenAI({
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
-
-let cachedPrompt: string | null = null;
-function getSystemPrompt(): string {
-    if (!cachedPrompt) {
-        cachedPrompt = fs.readFileSync(
-            path.join(process.cwd(), 'prompts', 'evaluate.md'),
-            'utf-8'
-        );
-    }
-    return cachedPrompt;
-}
 
 export async function POST(request: Request): Promise<NextResponse> {
     try {
@@ -82,21 +70,13 @@ export async function POST(request: Request): Promise<NextResponse> {
         }
 
         // 3. Bewertung mit OpenAI
-        const systemPrompt = getSystemPrompt();
-        const evaluationPrompt =
-            evaluationMode === 'supportive'
-                ? `Modus: supportive
-Erzeuge nur positives, unterstützendes Feedback in JSON.
-Gib KEINEN score zurück.
-Antworte mit genau diesen Feldern:
-- "feedback": string
-- "recommendation": "understood" oder "review_later"
-Frage: ${question.question}
-Muster: ${question.answer}
-User: ${userAnswer}`
-                : `Frage: ${question.question}
-        Muster: ${question.answer}
-        User: ${userAnswer}`;
+        const systemPrompt = loadPrompt('evaluate');
+        const evaluationPrompt = loadRenderedPrompt('evaluate-user', {
+            mode: evaluationMode,
+            question: question.question,
+            model_answer: question.answer,
+            user_answer: userAnswer,
+        });
 
         const completion = await openai.chat.completions.create({
             model: 'gpt-4o-mini',

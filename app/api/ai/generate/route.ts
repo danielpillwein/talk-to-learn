@@ -1,19 +1,8 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 import OpenAI from "openai";
+import { loadPrompt, loadRenderedPrompt } from "@/lib/prompt-store";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-let cachedPrompt: string | null = null;
-function getSystemPrompt(): string {
-  if (!cachedPrompt) {
-    cachedPrompt = fs.readFileSync(
-      path.join(process.cwd(), "prompts", "ai-generate.md"),
-      "utf-8"
-    );
-  }
-  return cachedPrompt;
-}
 
 export async function POST(request: Request): Promise<NextResponse> {
   const body = await request.json();
@@ -28,7 +17,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "title and text are required" }, { status: 400 });
   }
 
-  const systemPrompt = getSystemPrompt();
+  const systemPrompt = loadPrompt("ai-generate");
+  const modeHint = loadRenderedPrompt("ai-generate-mode", { mode: "default" }).trim();
+  const userPrompt = loadRenderedPrompt("ai-generate-user", {
+    title,
+    style: style || "kompakt",
+    difficulty: difficulty || "mittel",
+    count: Number.isFinite(count) && count > 0 ? count : 8,
+    detected_topics: topicFocus || "keine",
+    topic_focus: topicFocus || "keiner",
+    mode_hint: modeHint,
+    text,
+  });
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -36,7 +36,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       { role: "system", content: systemPrompt },
       {
         role: "user",
-        content: `Titel: ${title}\nStil: ${style}\nSchwierigkeit: ${difficulty}\nAnzahl: ${count}\nFokus: ${topicFocus}\n\nText:\n${text}`,
+        content: userPrompt,
       },
     ],
     response_format: { type: "json_object" },

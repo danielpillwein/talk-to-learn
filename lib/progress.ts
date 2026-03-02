@@ -184,12 +184,30 @@ export async function markCardSeenAndAdvanceDeck({
   deckId: string;
   cardId: string;
 }) {
-  await db.card.update({
-    where: { id: cardId },
-    data: {
-      seen: true,
-      state: "unseen",
-    },
+  await db.$transaction(async (tx) => {
+    await tx.card.update({
+      where: { id: cardId },
+      data: {
+        seen: true,
+        state: "unseen",
+      },
+    });
+
+    await tx.reviewProgress.upsert({
+      where: { userId_cardId: { userId, cardId } },
+      create: {
+        userId,
+        deckId,
+        cardId,
+        status: "new",
+        nextReview: new Date(),
+        reviewCount: 0,
+        lastActionAt: new Date(),
+      },
+      update: {
+        lastActionAt: new Date(),
+      },
+    });
   });
 
   const unseenCount = await db.card.count({
@@ -208,17 +226,39 @@ export async function markCardSeenAndAdvanceDeck({
 }
 
 export async function markCardScaffoldedExplanation({
+  userId,
+  deckId,
   cardId,
 }: {
+  userId: string;
+  deckId: string;
   cardId: string;
 }) {
-  await db.card.update({
-    where: { id: cardId },
-    data: {
-      seen: true,
-      hasScaffoldedExplanation: true,
-      state: "explained_with_help",
-    },
+  await db.$transaction(async (tx) => {
+    await tx.card.update({
+      where: { id: cardId },
+      data: {
+        seen: true,
+        hasScaffoldedExplanation: true,
+        state: "explained_with_help",
+      },
+    });
+
+    await tx.reviewProgress.upsert({
+      where: { userId_cardId: { userId, cardId } },
+      create: {
+        userId,
+        deckId,
+        cardId,
+        status: "new",
+        nextReview: new Date(),
+        reviewCount: 0,
+        lastActionAt: new Date(),
+      },
+      update: {
+        lastActionAt: new Date(),
+      },
+    });
   });
 }
 

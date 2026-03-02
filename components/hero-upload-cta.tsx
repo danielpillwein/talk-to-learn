@@ -35,7 +35,7 @@ export function HeroUploadCta(): JSX.Element {
         dataBase64,
       };
       sessionStorage.setItem(HERO_UPLOAD_KEY, JSON.stringify(payload));
-      router.push("/app/create");
+      router.push("/app/create?new=1");
     } catch {
       setIsLoading(false);
     }

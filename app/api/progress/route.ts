@@ -115,7 +115,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Question not found" }, { status: 404 });
     }
 
-    await markCardScaffoldedExplanation({ cardId: card.id });
+    await markCardScaffoldedExplanation({
+      userId: session.user.id,
+      deckId: deck.id,
+      cardId: card.id,
+    });
   } else if (action === "skip_known_unknown") {
     const questionId = body.questionId as number | undefined;
     if (typeof questionId !== "number") {

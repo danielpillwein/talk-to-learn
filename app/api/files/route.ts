@@ -13,8 +13,15 @@ export async function GET(): Promise<NextResponse> {
                 id: true,
                 title: true,
                 sourceFilename: true,
+                createdAt: true,
                 hasBeenIntroduced: true,
                 learningPhase: true,
+                cards: {
+                    select: {
+                        question: true,
+                        answer: true,
+                    },
+                },
                 _count: { select: { cards: true } },
             },
             where: { ownerId: session.user.id },
@@ -102,12 +109,25 @@ export async function GET(): Promise<NextResponse> {
                 id: deck.id,
                 title: deck.title,
                 filename: deck.sourceFilename,
+                createdAt: deck.createdAt,
                 totalQuestions: total,
                 known: effectiveKnown,
                 learning: effectiveLearning,
                 new: effectiveNew,
-                lastLearnedAt: lastActionByDeck[deck.id] ?? null,
+                lastEditedAt: lastActionByDeck[deck.id] ?? deck.createdAt,
+                lastLearnedAt: lastActionByDeck[deck.id] ?? deck.createdAt,
                 learningPhaseStatus,
+                searchText: [
+                    deck.title,
+                    ...deck.cards.map((card) => card.question),
+                    ...deck.cards.map((card) => card.answer),
+                ]
+                    .join(' ')
+                    .toLocaleLowerCase('de'),
+                searchCards: deck.cards.map((card) => ({
+                    question: card.question,
+                    answer: card.answer,
+                })),
             };
         });
 

@@ -14,7 +14,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const mode = String(formData.get("mode") ?? "default") === "alternate" ? "alternate" : "default";
     const { normalizedText, filename } = await extractTextFromFile(file);
     const derived = deriveGenerationParams(normalizedText, filename);
     const params = resolveGenerationParams({
@@ -31,14 +30,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       text: normalizedText,
       params,
       detectedTopics: derived.detectedTopics,
-      mode,
+      mode: "alternate",
     });
 
     return NextResponse.json({
       cards,
       params,
       derived,
-      mode,
+      mode: "alternate",
     });
   } catch (error) {
     const mapped = mapCreateDeckError(error);
