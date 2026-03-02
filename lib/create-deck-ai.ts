@@ -6,7 +6,7 @@ export const MAX_UPLOAD_MB = 10;
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
 const MIN_QUESTION_COUNT = 2;
-const MAX_QUESTION_COUNT = 10;
+const MAX_QUESTION_COUNT = 25;
 
 export type DifficultyOption = "leicht" | "mittel" | "anspruchsvoll";
 export type StyleOption = "erklaerend" | "pruefungsnah" | "kompakt";
@@ -166,11 +166,49 @@ function getLines(text: string): string[] {
     .filter(Boolean);
 }
 
-function detectTitle(text: string, filename: string): string {
+function toTitleWord(word: string): string {
+  if (!word) return "";
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+function normalizeTitleCandidate(input: string): string {
+  return input
+    .replace(/^#+\s*/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[.:!?]+$/, "")
+    .trim();
+}
+
+function isGenericTitle(input: string): boolean {
+  const value = input.toLowerCase();
+  if (!value) return true;
+  if (value.length < 6) return true;
+  return /^(dokument|unterlagen|notizen|zusammenfassung|lernset|skript|vorlesung|kapitel)$/i.test(
+    value
+  );
+}
+
+function buildTopicTitle(text: string, topics: string[]): string {
+  const main = toTitleWord(topics[0] ?? "");
+  const secondary = toTitleWord(topics[1] ?? "");
+  const examContext = /(aufgabe|klausur|prüfung|exam|test)/i.test(text);
+
+  if (!main) return "";
+  if (examContext) {
+    return secondary
+      ? `Prüfungsvorbereitung: ${main} und ${secondary}`
+      : `Prüfungsvorbereitung: ${main}`;
+  }
+  return secondary ? `Grundlagen zu ${main} und ${secondary}` : `Grundlagen zu ${main}`;
+}
+
+function detectTitle(text: string, filename: string, topics: string[]): string {
   const lines = getLines(text).slice(0, 80);
   const markdownTitle = lines.find((line) => /^#\s+.{3,120}$/.test(line));
   if (markdownTitle) {
-    return markdownTitle.replace(/^#\s+/, "").trim();
+    const candidate = normalizeTitleCandidate(markdownTitle);
+    if (!isGenericTitle(candidate)) return candidate;
   }
 
   const structuredLine = lines.find(
@@ -182,7 +220,14 @@ function detectTitle(text: string, filename: string): string {
       /^[\dA-Za-zÄÖÜäöüß _\-()/]+$/.test(line)
   );
 
-  if (structuredLine) return structuredLine;
+  if (structuredLine) {
+    const candidate = normalizeTitleCandidate(structuredLine);
+    if (!isGenericTitle(candidate)) return candidate;
+  }
+
+  const topicTitle = buildTopicTitle(text, topics);
+  if (topicTitle) return topicTitle;
+
   return fallbackTitle(filename);
 }
 
@@ -357,7 +402,7 @@ export function deriveGenerationParams(text: string, filename: string): DerivedG
   const stats = computeStats(text);
   const detectedTopics = detectTopics(text);
   return {
-    suggestedTitle: detectTitle(text, filename),
+    suggestedTitle: detectTitle(text, filename, detectedTopics),
     suggestedDifficulty: deriveDifficulty(text),
     suggestedQuestionCount: deriveQuestionCount(stats.wordCount),
     suggestedStyle: deriveStyle(text, stats.headingDensity),
@@ -368,6 +413,85 @@ export function deriveGenerationParams(text: string, filename: string): DerivedG
       averageSentenceLength: stats.averageSentenceLength,
     },
   };
+}
+
+function compactText(input: string, maxLength: number): string {
+  return input.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function buildTitleContext(text: string, topics: string[]) {
+  const lines = getLines(text).slice(0, 120);
+  const headings = lines
+    .filter((line) => /^#\s+/.test(line) || /^[0-9]+(\.[0-9]+)*\s+[A-Za-zÄÖÜäöüß]/.test(line))
+    .slice(0, 6)
+    .map((line) => normalizeTitleCandidate(line));
+  const excerptA = compactText(text.slice(0, 900), 340);
+  const middleStart = Math.max(0, Math.floor(text.length * 0.45));
+  const excerptB = compactText(text.slice(middleStart, middleStart + 900), 340);
+
+  return {
+    headings: headings.join(" | ") || "-",
+    topics: topics.slice(0, 6).join(", ") || "-",
+    excerptA: excerptA || "-",
+    excerptB: excerptB || "-",
+  };
+}
+
+function sanitizeAiTitle(input: string): string {
+  const cleaned = normalizeTitleCandidate(String(input ?? ""));
+  if (!cleaned) return "";
+  return cleaned.slice(0, 90);
+}
+
+export async function deriveGenerationParamsWithAiTitle(input: {
+  openai: OpenAI;
+  text: string;
+  filename: string;
+}): Promise<DerivedGenerationParams> {
+  const { openai, text, filename } = input;
+  const derived = deriveGenerationParams(text, filename);
+  const fallbackTitle = derived.suggestedTitle;
+  const context = buildTitleContext(text, derived.detectedTopics);
+
+  try {
+    const systemPrompt = loadPrompt("ai-title-system");
+    const userPrompt = loadRenderedPrompt("ai-title-user", {
+      filename,
+      topics: context.topics,
+      headings: context.headings,
+      excerpt_a: context.excerptA,
+      excerpt_b: context.excerptB,
+    });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.2,
+      max_tokens: 60,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(raw) as { title?: string };
+    const candidate = sanitizeAiTitle(parsed.title ?? "");
+
+    if (!candidate || isGenericTitle(candidate)) {
+      return derived;
+    }
+
+    return {
+      ...derived,
+      suggestedTitle: candidate,
+    };
+  } catch {
+    return {
+      ...derived,
+      suggestedTitle: fallbackTitle,
+    };
+  }
 }
 
 export function resolveGenerationParams(input: {
@@ -420,12 +544,13 @@ export async function generateCardsFromText(input: {
 }): Promise<CardPayload[]> {
   const { openai, text, params, detectedTopics } = input;
   const mode = input.mode ?? "default";
+  const promptStyle = params.style === "pruefungsnah" ? "anwenden" : "verstehen";
 
   const systemPrompt = loadPrompt("ai-generate");
   const modeHint = loadRenderedPrompt("ai-generate-mode", { mode }).trim();
   const userPrompt = loadRenderedPrompt("ai-generate-user", {
     title: params.title,
-    style: params.style,
+    style: promptStyle,
     difficulty: params.difficulty,
     count: params.count,
     detected_topics: detectedTopics.join(", ") || "keine",

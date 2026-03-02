@@ -3,7 +3,12 @@ import OpenAI from "openai";
 import { CreateDeckError, mapCreateDeckError } from "@/lib/create-deck-ai";
 import { loadPrompt, loadRenderedPrompt } from "@/lib/prompt-store";
 
-type RefineAction = "expandAnswer" | "condenseAnswer";
+type RefineAction =
+  | "expandAnswer"
+  | "condenseAnswer"
+  | "increaseDifficulty"
+  | "simplifyAnswer"
+  | "examOriented";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -27,7 +32,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       });
     }
 
-    if (!["expandAnswer", "condenseAnswer"].includes(action)) {
+    if (
+      !["expandAnswer", "condenseAnswer", "increaseDifficulty", "simplifyAnswer", "examOriented"].includes(
+        action
+      )
+    ) {
       throw new CreateDeckError({
         code: "INVALID_REQUEST",
         status: 400,
@@ -39,7 +48,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const systemPrompt = loadPrompt("refine-card-system");
     const userPrompt = loadRenderedPrompt("refine-card-user", {
       title: title || "Lernset",
-      style: style || "kompakt",
+      style: style || "verstehen",
       difficulty: difficulty || "mittel",
       topic_focus: topicFocus || "-",
       action,
@@ -50,7 +59,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       response_format: { type: "json_object" },
-      temperature: action === "expandAnswer" ? 0.3 : 0.2,
+      temperature: action === "expandAnswer" || action === "examOriented" ? 0.3 : 0.2,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },

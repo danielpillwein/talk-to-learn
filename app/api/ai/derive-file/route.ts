@@ -1,12 +1,23 @@
 import { NextResponse } from "next/server";
-import { deriveGenerationParams, extractTextFromFile, mapCreateDeckError } from "@/lib/create-deck-ai";
+import OpenAI from "openai";
+import {
+  deriveGenerationParamsWithAiTitle,
+  extractTextFromFile,
+  mapCreateDeckError,
+} from "@/lib/create-deck-ai";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const { normalizedText, filename } = await extractTextFromFile(file);
-    const derived = deriveGenerationParams(normalizedText, filename);
+    const derived = await deriveGenerationParamsWithAiTitle({
+      openai,
+      text: normalizedText,
+      filename,
+    });
 
     return NextResponse.json({
       suggestedTitle: derived.suggestedTitle,

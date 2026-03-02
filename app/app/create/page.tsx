@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +9,13 @@ import { Button } from "@/components/ui/button";
 import { LoadingButton } from "@/components/ui/loading-button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
-import { InfoTooltip } from "@/components/ui/info-tooltip";
+import {
+  ArrowUpTrayIcon,
+  ArrowsRightLeftIcon,
+  ChevronDownIcon,
+  SparklesIcon,
+  TrashIcon,
+} from "@heroicons/react/24/outline";
 import { clearHeroUpload, loadHeroUpload } from "@/lib/hero-upload-store";
 
 type CardDraft = {
@@ -22,10 +29,16 @@ type SaveDraftPayload = {
 };
 
 type DifficultyOption = "leicht" | "mittel" | "anspruchsvoll";
-type StyleOption = "kompakt" | "pruefungsnah" | "erklaerend";
+type LearningGoalOption = "verstehen" | "anwenden";
+type ApiStyleOption = "kompakt" | "pruefungsnah" | "erklaerend";
 type QuestionCount = number;
 type RetryAction = "derive" | "generate" | "regenerate" | "save";
-type RefineAction = "expandAnswer" | "condenseAnswer";
+type RefineAction =
+  | "expandAnswer"
+  | "condenseAnswer"
+  | "increaseDifficulty"
+  | "simplifyAnswer"
+  | "examOriented";
 type StageKey = "analyze" | "topics" | "generate" | "quality";
 
 type ApiErrorState = {
@@ -38,7 +51,7 @@ type ApiErrorState = {
 type WorkingDraftPayload = {
   title: string;
   cards: CardDraft[];
-  style: StyleOption;
+  learningGoal: LearningGoalOption;
   difficulty: DifficultyOption;
   count: QuestionCount;
   topicFocus: string;
@@ -50,8 +63,8 @@ type WorkingDraftPayload = {
 type DeriveResponse = {
   suggestedTitle: string;
   suggestedDifficulty: DifficultyOption;
-  suggestedQuestionCount: QuestionCount;
-  suggestedStyle: StyleOption;
+  suggestedQuestionCount: number;
+  suggestedStyle: ApiStyleOption;
   detectedTopics: string[];
   stats?: {
     wordCount?: number;
@@ -72,22 +85,25 @@ const MAX_UPLOAD_MB = 10;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
 const STAGE_DEFS: Array<{ key: StageKey; label: string }> = [
-  { key: "analyze", label: "Dokument analysieren" },
+  { key: "analyze", label: "Unterlagen verwenden" },
   { key: "topics", label: "Themen erkennen" },
   { key: "generate", label: "Fragen generieren" },
   { key: "quality", label: "Qualität prüfen" },
 ];
 const FLOW_STEPS = [
-  { id: 1, title: "Datei hochladen" },
-  { id: 2, title: "Parameter prüfen" },
-  { id: 3, title: "Vorschau bearbeiten" },
+  { id: 1, title: "Datei auswählen" },
+  { id: 2, title: "Wie möchtest du lernen?" },
+  { id: 3, title: "Lernset finalisieren" },
 ] as const;
 type FlowStepId = (typeof FLOW_STEPS)[number]["id"];
 
-const STYLE_LABELS: Record<StyleOption, string> = {
-  kompakt: "Kompakt",
-  pruefungsnah: "Prüfungsnah",
-  erklaerend: "Erklärend",
+const LEARNING_GOAL_LABELS: Record<LearningGoalOption, string> = {
+  verstehen: "Verstehen",
+  anwenden: "Anwenden",
+};
+const LEARNING_GOAL_HINTS: Record<LearningGoalOption, string> = {
+  verstehen: "Mehr Verständnisfragen zu Begriffen, Zusammenhängen und dem Warum.",
+  anwenden: "Mehr anwendungsnahe Fragen zu Situationen, Entscheidungen und Vorgehen.",
 };
 
 const DIFFICULTY_LABELS: Record<DifficultyOption, string> = {
@@ -95,19 +111,46 @@ const DIFFICULTY_LABELS: Record<DifficultyOption, string> = {
   mittel: "Mittel",
   anspruchsvoll: "Anspruchsvoll",
 };
+const DIFFICULTY_HINTS: Record<DifficultyOption, string> = {
+  leicht: "Leichter Einstieg mit klarer Sprache und direkteren Fragen.",
+  mittel: "Ausgewogenes Niveau mit solider Tiefe und etwas Transfer.",
+  anspruchsvoll: "Höhere Denktiefe mit komplexeren Fragen und präziserer Formulierung.",
+};
+const MIN_QUESTION_COUNT = 2;
+const FREE_PLAN_QUESTION_LIMIT = 10;
+const MAX_QUESTION_COUNT = 25;
+const PREMIUM_BOUNDARY_VALUE = FREE_PLAN_QUESTION_LIMIT + 0.5;
+const CARD_REFINE_OPTIONS: Array<{ action: RefineAction; label: string }> = [
+  { action: "expandAnswer", label: "Ausführlicher" },
+  { action: "condenseAnswer", label: "Prägnanter" },
+  { action: "increaseDifficulty", label: "Schwieriger" },
+  { action: "simplifyAnswer", label: "Vereinfachen" },
+];
 
 function isDifficulty(value: unknown): value is DifficultyOption {
   return value === "leicht" || value === "mittel" || value === "anspruchsvoll";
 }
 
-function isStyle(value: unknown): value is StyleOption {
+function isStyle(value: unknown): value is ApiStyleOption {
   return value === "kompakt" || value === "pruefungsnah" || value === "erklaerend";
+}
+
+function learningGoalFromStyle(value: unknown): LearningGoalOption {
+  if (value === "pruefungsnah") return "anwenden";
+  return "verstehen";
+}
+
+function styleFromLearningGoal(goal: LearningGoalOption): ApiStyleOption {
+  return goal === "anwenden" ? "pruefungsnah" : "erklaerend";
 }
 
 function normalizeCount(value: unknown): QuestionCount {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 8;
-  return Math.max(2, Math.min(10, Math.round(numeric)));
+  if (!Number.isFinite(numeric)) return 10;
+  const rounded = Math.round(numeric);
+  if (rounded < MIN_QUESTION_COUNT) return MIN_QUESTION_COUNT;
+  if (rounded > MAX_QUESTION_COUNT) return MAX_QUESTION_COUNT;
+  return rounded;
 }
 
 function isAllowedFile(file: File): boolean {
@@ -183,7 +226,7 @@ function loadWorkingDraft(): WorkingDraftPayload | null {
   try {
     const raw = window.localStorage.getItem(WORKING_DRAFT_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as WorkingDraftPayload;
+    const parsed = JSON.parse(raw) as WorkingDraftPayload & { style?: ApiStyleOption };
     if (!parsed || typeof parsed !== "object") return null;
     if (!Array.isArray(parsed.cards)) return null;
 
@@ -195,7 +238,10 @@ function loadWorkingDraft(): WorkingDraftPayload | null {
           answer: String(card.answer ?? ""),
         }))
         .filter((card) => card.question || card.answer),
-      style: isStyle(parsed.style) ? parsed.style : "kompakt",
+      learningGoal:
+        parsed.learningGoal === "verstehen" || parsed.learningGoal === "anwenden"
+          ? parsed.learningGoal
+          : learningGoalFromStyle(parsed.style),
       difficulty: isDifficulty(parsed.difficulty) ? parsed.difficulty : "mittel",
       count: normalizeCount(parsed.count),
       topicFocus: String(parsed.topicFocus ?? ""),
@@ -295,30 +341,31 @@ function FlowStepper(props: {
 function StepSection(props: {
   id: FlowStepId;
   title: string;
+  subtitle?: string;
   active: boolean;
   complete: boolean;
   disabled?: boolean;
   onOpen: () => void;
   children: ReactNode;
 }): JSX.Element {
-  const { id, title, active, complete, disabled, onOpen, children } = props;
+  const { id, title, subtitle, active, complete, disabled, onOpen, children } = props;
   return (
     <Card className={`border-border bg-card shadow-sm ${active ? "" : "opacity-95"}`}>
       <button
         type="button"
         onClick={onOpen}
         disabled={disabled}
-        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full items-center gap-3 px-5 py-4 text-left disabled:cursor-not-allowed disabled:opacity-60"
       >
         <div className="flex items-center gap-3">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border text-xs font-semibold text-foreground">
             {complete ? "✓" : id}
           </span>
-          <p className="text-sm font-semibold text-foreground">{title}</p>
+          <div className="space-y-0.5">
+            <p className="text-sm font-semibold text-foreground">{title}</p>
+            {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+          </div>
         </div>
-        <span className="text-xs font-medium text-muted-foreground">
-          {active ? "Aktiv" : "Öffnen"}
-        </span>
       </button>
       {active && <CardContent className="space-y-4 pt-0">{children}</CardContent>}
     </Card>
@@ -379,6 +426,7 @@ export default function CreateDeckPage(): JSX.Element {
   const autoSaveTriggered = useRef(false);
   const hasTrackedCardEdit = useRef(false);
   const generateStartedAt = useRef<number | null>(null);
+  const redirectFallbackTimer = useRef<number | null>(null);
 
   const [isDragging, setIsDragging] = useState(false);
 
@@ -386,38 +434,79 @@ export default function CreateDeckPage(): JSX.Element {
   const [fileName, setFileName] = useState("");
 
   const [title, setTitle] = useState("");
-  const [style, setStyle] = useState<StyleOption>("kompakt");
+  const [learningGoal, setLearningGoal] = useState<LearningGoalOption>("verstehen");
   const [difficulty, setDifficulty] = useState<DifficultyOption>("mittel");
-  const [count, setCount] = useState<QuestionCount>(8);
+  const [questionCount, setQuestionCount] = useState<QuestionCount>(10);
+  const [questionCountInput, setQuestionCountInput] = useState("10");
   const [topicFocus, setTopicFocus] = useState("");
   const [detectedTopics, setDetectedTopics] = useState<string[]>([]);
+  const [focusOpen, setFocusOpen] = useState(false);
 
   const [cards, setCards] = useState<CardDraft[]>([]);
-  const [editingField, setEditingField] = useState<{ index: number; key: keyof CardDraft } | null>(
-    null
-  );
 
   const [analysisReady, setAnalysisReady] = useState(false);
 
   const [isDeriving, setIsDeriving] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [openRefineMenuIndex, setOpenRefineMenuIndex] = useState<number | null>(null);
   const [refineLoading, setRefineLoading] = useState<{ index: number; action: RefineAction } | null>(
     null
   );
 
   const [loaderOpen, setLoaderOpen] = useState(false);
   const [activeStage, setActiveStage] = useState<StageKey | null>(null);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
 
   const [error, setError] = useState<ApiErrorState | null>(null);
   const [activeStep, setActiveStep] = useState<FlowStepId>(1);
 
+  const hasPremiumAccess = false;
+  const userPlan: "free" | "premium" = hasPremiumAccess ? "premium" : "free";
+  const isPremiumRequired = questionCount > FREE_PLAN_QUESTION_LIMIT && userPlan === "free";
+  const premiumBoundaryPercent =
+    ((PREMIUM_BOUNDARY_VALUE - MIN_QUESTION_COUNT) / (MAX_QUESTION_COUNT - MIN_QUESTION_COUNT)) * 100;
+  const questionCountPercent =
+    ((questionCount - MIN_QUESTION_COUNT) / (MAX_QUESTION_COUNT - MIN_QUESTION_COUNT)) * 100;
+  const sliderTrackBackground =
+    questionCount <= FREE_PLAN_QUESTION_LIMIT
+      ? `linear-gradient(to right,
+          var(--secondary) 0%,
+          var(--secondary) ${questionCountPercent}%,
+          var(--muted) ${questionCountPercent}%,
+          var(--muted) calc(${premiumBoundaryPercent}% - 2px),
+          var(--card) calc(${premiumBoundaryPercent}% - 2px),
+          var(--card) calc(${premiumBoundaryPercent}% + 2px),
+          var(--muted) calc(${premiumBoundaryPercent}% + 2px),
+          var(--muted) 100%)`
+      : `linear-gradient(to right,
+          var(--secondary) 0%,
+          var(--secondary) calc(${premiumBoundaryPercent}% - 2px),
+          var(--card) calc(${premiumBoundaryPercent}% - 2px),
+          var(--card) calc(${premiumBoundaryPercent}% + 2px),
+          var(--primary) calc(${premiumBoundaryPercent}% + 2px),
+          var(--primary) ${questionCountPercent}%,
+          var(--muted) ${questionCountPercent}%,
+          var(--muted) 100%)`;
+  const sliderTrackStyle = {
+    background: sliderTrackBackground,
+  };
+  const premiumHintPositionStyle =
+    questionCountPercent >= 88
+      ? { right: "0", left: "auto", transform: "translateX(0)" }
+      : questionCountPercent <= 12
+        ? { left: "0", right: "auto", transform: "translateX(0)" }
+        : { left: `${questionCountPercent}%`, transform: "translateX(-50%)" };
   const canGenerate = analysisReady && !!file && !isGenerating;
   const canOpenStep2 = analysisReady;
   const canOpenStep3 = cards.length > 0;
   const isStep1Complete = Boolean(file);
-  const isStep2Complete = analysisReady;
+  const isStep2Complete = cards.length > 0;
   const isStep3Complete = cards.length > 0;
+  const step2Summary =
+    cards.length > 0
+      ? `Titel: ${title.trim() || "Unbenannt"} · Niveau: ${DIFFICULTY_LABELS[difficulty]} · Stil: ${LEARNING_GOAL_LABELS[learningGoal]}`
+      : undefined;
 
   const goToStep = (nextStep: FlowStepId) => {
     setActiveStep(nextStep);
@@ -430,12 +519,26 @@ export default function CreateDeckPage(): JSX.Element {
       map[nextStep]?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 60);
   };
+
+  const navigateToLearnAfterSave = (target: string) => {
+    router.replace(target);
+
+    if (redirectFallbackTimer.current !== null) {
+      window.clearTimeout(redirectFallbackTimer.current);
+    }
+
+    redirectFallbackTimer.current = window.setTimeout(() => {
+      if (window.location.pathname.startsWith("/app/create")) {
+        window.location.assign(target);
+      }
+    }, 1400);
+  };
   const activeProcessingLabel = useMemo(() => {
     if (activeStage) {
       const stage = STAGE_DEFS.find((entry) => entry.key === activeStage);
       if (stage) return stage.label;
     }
-    if (isDeriving) return "Dokument analysieren";
+    if (isDeriving) return "Unterlagen verwenden";
     if (isGenerating) return "Fragen generieren";
     return "Verarbeite Anfrage";
   }, [activeStage, isDeriving, isGenerating]);
@@ -460,6 +563,41 @@ export default function CreateDeckPage(): JSX.Element {
     setError({ ...nextError, action });
   };
 
+  const setQuestionCountWithHint = (nextValue: unknown) => {
+    setQuestionCount((prev) => {
+      const next = normalizeCount(nextValue);
+      return next;
+    });
+  };
+
+  const handleQuestionCountInputChange = (value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const numeric = Number(value);
+    if (value && Number.isFinite(numeric) && numeric < MIN_QUESTION_COUNT) {
+      setQuestionCountInput(String(MIN_QUESTION_COUNT));
+      setQuestionCountWithHint(MIN_QUESTION_COUNT);
+      return;
+    }
+    if (value && Number.isFinite(numeric) && numeric > MAX_QUESTION_COUNT) {
+      setQuestionCountInput(String(MAX_QUESTION_COUNT));
+      setQuestionCountWithHint(MAX_QUESTION_COUNT);
+      return;
+    }
+    setQuestionCountInput(value);
+    if (!value) return;
+    setQuestionCountWithHint(value);
+  };
+
+  const handleQuestionCountInputBlur = () => {
+    if (!questionCountInput) {
+      setQuestionCountInput(String(questionCount));
+      return;
+    }
+    const normalized = normalizeCount(questionCountInput);
+    setQuestionCountWithHint(normalized);
+    setQuestionCountInput(String(normalized));
+  };
+
   const resetFlowForNewFile = (selectedFile: File | null) => {
     setFile(selectedFile);
     setFileName(selectedFile?.name ?? "");
@@ -467,7 +605,7 @@ export default function CreateDeckPage(): JSX.Element {
     setCards([]);
     setDetectedTopics([]);
     setTopicFocus("");
-    setEditingField(null);
+    setFocusOpen(false);
     setError(null);
     setActiveStep(1);
   };
@@ -503,17 +641,14 @@ export default function CreateDeckPage(): JSX.Element {
     const nextDifficulty = isDifficulty(payload.suggestedDifficulty)
       ? payload.suggestedDifficulty
       : "mittel";
-    const nextCount = normalizeCount(payload.suggestedQuestionCount);
-    const nextStyle = isStyle(payload.suggestedStyle) ? payload.suggestedStyle : "kompakt";
     const nextTopics = Array.isArray(payload.detectedTopics)
       ? payload.detectedTopics.slice(0, 6).map((topic) => String(topic))
       : [];
 
     setTitle(nextTitle);
     setDifficulty(nextDifficulty);
-    setCount(nextCount);
-    setStyle(nextStyle);
     setDetectedTopics(nextTopics);
+    setFocusOpen(false);
   };
 
   const handlePrepare = async () => {
@@ -589,9 +724,9 @@ export default function CreateDeckPage(): JSX.Element {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("title", title.trim());
-      formData.append("style", style);
+      formData.append("style", styleFromLearningGoal(learningGoal));
       formData.append("difficulty", difficulty);
-      formData.append("count", String(count));
+      formData.append("count", String(questionCount));
       formData.append("topicFocus", topicFocus.trim());
 
       const endpoint = action === "generate" ? "/api/ai/generate-file" : "/api/ai/regenerate";
@@ -647,15 +782,15 @@ export default function CreateDeckPage(): JSX.Element {
         trackEvent("time_to_generate", {
           ms: elapsedMs,
           card_count: nextCards.length,
-          style,
+          learning_goal: learningGoal,
           difficulty,
-          count,
+          count: questionCount,
         });
       } else {
         trackEvent("regeneration_rate", {
-          style,
+          learning_goal: learningGoal,
           difficulty,
-          count,
+          count: questionCount,
           card_count: nextCards.length,
         });
       }
@@ -667,6 +802,10 @@ export default function CreateDeckPage(): JSX.Element {
   };
 
   const handleGenerate = async () => {
+    if (isPremiumRequired) {
+      setShowPremiumModal(true);
+      return;
+    }
     await runGeneration("generate");
   };
 
@@ -693,6 +832,47 @@ export default function CreateDeckPage(): JSX.Element {
     setCards((prev) => prev.filter((_, idx) => idx !== index));
   };
 
+  const requestRefinedCard = async (
+    card: CardDraft,
+    action: RefineAction
+  ): Promise<{ card?: CardDraft; error?: ApiErrorState }> => {
+    const response = await fetch("/api/ai/refine-card", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: card.question.trim(),
+        answer: card.answer.trim(),
+        action,
+        title,
+        style: styleFromLearningGoal(learningGoal),
+        difficulty,
+        topicFocus,
+      }),
+    });
+
+    if (!response.ok) {
+      const parsed = await parseApiError(response, "Die Verfeinerung ist fehlgeschlagen.");
+      return { error: parsed };
+    }
+
+    const payload = (await response.json()) as { card?: CardDraft };
+    if (!payload.card) {
+      return {
+        error: {
+          message: "Die Verfeinerung hat kein gültiges Ergebnis geliefert.",
+          retryable: true,
+        },
+      };
+    }
+
+    return {
+      card: {
+        question: String(payload.card.question ?? "").trim(),
+        answer: String(payload.card.answer ?? "").trim(),
+      },
+    };
+  };
+
   const handleRefineCard = async (index: number, action: RefineAction) => {
     const card = cards[index];
     if (!card) return;
@@ -713,35 +893,13 @@ export default function CreateDeckPage(): JSX.Element {
     setActionError(null);
 
     try {
-      const response = await fetch("/api/ai/refine-card", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question,
-          answer,
-          action,
-          title,
-          style,
-          difficulty,
-          topicFocus,
-        }),
-      });
-
-      if (!response.ok) {
-        const parsed = await parseApiError(response, "Die Verfeinerung ist fehlgeschlagen.");
-        setActionError(parsed, undefined);
+      const result = await requestRefinedCard(card, action);
+      if (result.error) {
+        setActionError(result.error, undefined);
         return;
       }
 
-      const payload = (await response.json()) as { card?: CardDraft };
-      if (!payload.card) {
-        setActionError(
-          {
-            message: "Die Verfeinerung hat kein gültiges Ergebnis geliefert.",
-            retryable: true,
-          },
-          undefined
-        );
+      if (!result.card) {
         return;
       }
 
@@ -749,8 +907,8 @@ export default function CreateDeckPage(): JSX.Element {
         prev.map((entry, idx) =>
           idx === index
             ? {
-                question: String(payload.card?.question ?? "").trim(),
-                answer: String(payload.card?.answer ?? "").trim(),
+                question: result.card?.question ?? "",
+                answer: result.card?.answer ?? "",
               }
             : entry
         )
@@ -816,13 +974,18 @@ export default function CreateDeckPage(): JSX.Element {
 
       clearLoginDraft();
       clearWorkingDraft();
+      const payload = (await response.json()) as { deckId?: string };
+      const nextDeckId = String(payload.deckId ?? "").trim();
 
       trackEvent("save_conversion_rate", {
         cards: cleaned.length,
         source: "create",
       });
 
-      router.push("/app/learn");
+      const target = nextDeckId
+        ? `/app/learn?saved=1&newDeck=${encodeURIComponent(nextDeckId)}`
+        : "/app/learn?saved=1";
+      navigateToLearnAfterSave(target);
     } finally {
       setIsSaving(false);
     }
@@ -856,10 +1019,11 @@ export default function CreateDeckPage(): JSX.Element {
     if (cached.title) setTitle(cached.title);
     if (cached.cards.length > 0) setCards(cached.cards);
     if (cached.fileName) setFileName(cached.fileName);
-    setStyle(cached.style);
+    setLearningGoal(cached.learningGoal);
     setDifficulty(cached.difficulty);
-    setCount(cached.count);
+    setQuestionCount(cached.count);
     setTopicFocus(cached.topicFocus);
+    setFocusOpen(Boolean(cached.topicFocus.trim()));
     setDetectedTopics(cached.detectedTopics);
     setAnalysisReady(cached.analysisReady || cached.cards.length > 0);
     if (cached.cards.length > 0) {
@@ -881,16 +1045,16 @@ export default function CreateDeckPage(): JSX.Element {
     setFile(null);
     setFileName("");
     setCards([]);
-    setEditingField(null);
     setAnalysisReady(false);
     setDetectedTopics([]);
     setTopicFocus("");
+    setFocusOpen(false);
     setError(null);
     setActiveStep(1);
     setTitle("");
-    setStyle("kompakt");
+    setLearningGoal("verstehen");
     setDifficulty("mittel");
-    setCount(8);
+    setQuestionCount(10);
     setRefineLoading(null);
     setIsDeriving(false);
     setIsGenerating(false);
@@ -930,9 +1094,9 @@ export default function CreateDeckPage(): JSX.Element {
       saveWorkingDraft({
         title,
         cards,
-        style,
+        learningGoal,
         difficulty,
-        count,
+        count: questionCount,
         topicFocus,
         detectedTopics,
         fileName,
@@ -946,9 +1110,9 @@ export default function CreateDeckPage(): JSX.Element {
   }, [
     title,
     cards,
-    style,
+    learningGoal,
     difficulty,
-    count,
+    questionCount,
     topicFocus,
     detectedTopics,
     fileName,
@@ -1017,7 +1181,12 @@ export default function CreateDeckPage(): JSX.Element {
 
         clearLoginDraft();
         clearWorkingDraft();
-        router.replace("/app/learn");
+        const payload = (await response.json()) as { deckId?: string };
+        const nextDeckId = String(payload.deckId ?? "").trim();
+        const target = nextDeckId
+          ? `/app/learn?saved=1&newDeck=${encodeURIComponent(nextDeckId)}`
+          : "/app/learn?saved=1";
+        navigateToLearnAfterSave(target);
       } finally {
         setIsSaving(false);
       }
@@ -1025,6 +1194,54 @@ export default function CreateDeckPage(): JSX.Element {
 
     void autoSave();
   }, [user, router, cards.length, title]);
+
+  useEffect(() => {
+    setQuestionCountInput(String(questionCount));
+  }, [questionCount]);
+
+  useEffect(() => {
+    router.prefetch("/app/learn");
+  }, [router]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest("[data-refine-menu]")) {
+        setOpenRefineMenuIndex(null);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenRefineMenuIndex(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!refineLoading) return;
+    setOpenRefineMenuIndex(null);
+  }, [refineLoading]);
+
+  useEffect(() => {
+    if (openRefineMenuIndex === null) return;
+    if (openRefineMenuIndex < cards.length) return;
+    setOpenRefineMenuIndex(null);
+  }, [openRefineMenuIndex, cards.length]);
+
+  useEffect(() => {
+    return () => {
+      if (redirectFallbackTimer.current !== null) {
+        window.clearTimeout(redirectFallbackTimer.current);
+      }
+    };
+  }, []);
 
   return (
     <main className="relative py-8">
@@ -1039,25 +1256,36 @@ export default function CreateDeckPage(): JSX.Element {
           </div>
         </div>
       )}
+      {showPremiumModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/25 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-lg">
+            <h3 className="text-base font-semibold text-foreground">Mehr Fragen mit Premium</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Mit Premium kannst du 11 bis 25 Fragen pro Lernset generieren.
+            </p>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={() => setShowPremiumModal(false)}>
+                Später
+              </Button>
+              <Button asChild>
+                <Link href="/app/account#abo" onClick={() => setShowPremiumModal(false)}>
+                  Upgrade ansehen
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="relative flex flex-col gap-6">
-        <FlowStepper
-          activeStep={activeStep}
-          canOpenStep2={canOpenStep2}
-          canOpenStep3={canOpenStep3}
-          isStep1Complete={isStep1Complete}
-          isStep2Complete={isStep2Complete}
-          isStep3Complete={isStep3Complete}
-          onStepClick={goToStep}
-        />
-
         <div ref={step1Ref}>
           <StepSection
             id={1}
-            title="Datei hochladen"
+            title="Datei auswählen"
             active={activeStep === 1}
             complete={isStep1Complete}
-            onOpen={() => goToStep(1)}
+            disabled={activeStep > 1}
+            onOpen={() => activeStep === 1 && goToStep(1)}
           >
             {!fileName ? (
               <div
@@ -1091,47 +1319,46 @@ export default function CreateDeckPage(): JSX.Element {
                   setIsDragging(false);
                   consumeFile(event.dataTransfer.files?.[0] ?? null);
                 }}
-                className={`group relative flex w-full min-h-[172px] cursor-pointer flex-col items-center justify-center gap-1 rounded-3xl border border-dashed bg-muted px-8 py-6 text-center transition ${
+                className={`group flex w-full min-h-[136px] cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border border-dashed px-6 py-5 text-center transition-all duration-150 ${
                   isDragging
-                    ? "border-success/60 border-solid shadow-[inset_0_0_8px_5px_color-mix(in_srgb,var(--border)_30%,transparent)]"
-                    : "border-success/50"
+                    ? "scale-[1.01] border-primary/80 bg-background shadow-[0_0_0_2px_color-mix(in_srgb,var(--primary)_25%,transparent)]"
+                    : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-background"
                 }`}
                 style={{ borderStyle: isDragging ? "solid" : undefined }}
               >
-                <div className="absolute right-3 top-3 z-10">
-                  <InfoTooltip title="Nur eine Datei (*.pdf, *.txt, *.md)">
-                    <svg
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      className="h-5 w-5 fill-none text-border"
-                    >
-                      <path
-                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        strokeWidth="2"
-                        strokeLinejoin="round"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </InfoTooltip>
+                <div className="mb-1 inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/70 bg-background">
+                  <ArrowUpTrayIcon className="h-5 w-5 text-muted-foreground" />
                 </div>
-                <span className="text-lg font-semibold text-border">Datei hier ablegen, um direkt zu starten</span>
-                <span className="text-sm font-medium text-border">oder klicken, um deine Unterlagen auszuwählen</span>
+                <span className="text-base font-semibold text-foreground">Datei hochladen</span>
+                <span className="text-xs text-muted-foreground">Per Drag &amp; Drop oder Klick auswählen</span>
+                <span className="mt-1 text-[11px] text-muted-foreground">PDF, TXT, MD</span>
               </div>
             ) : (
-              <div className="flex flex-col gap-3 rounded-2xl border border-border bg-background px-4 py-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-2 rounded-xl border border-border bg-background px-4 py-3 md:flex-row md:items-center md:justify-between">
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Datei</p>
+                  <p className="text-xs font-medium text-muted-foreground">Datei</p>
                   <p className="text-sm font-semibold text-foreground">{fileName}</p>
                   <p className="text-xs text-muted-foreground">
                     Größe: {file ? formatFileSize(file.size) : "nicht verfügbar"}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                    Datei wechseln
+                  <Button
+                    variant="outline"
+                    className="h-9 w-9 px-0 md:h-10 md:w-auto md:px-4"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <ArrowsRightLeftIcon className="h-4 w-4" />
+                    <span className="hidden md:inline">Datei wechseln</span>
                   </Button>
-                  <Button variant="outline" onClick={() => resetFlowForNewFile(null)}>
-                    Entfernen
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9 md:h-10 md:w-10"
+                    onClick={() => resetFlowForNewFile(null)}
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                    <span className="sr-only">Datei entfernen</span>
                   </Button>
                 </div>
               </div>
@@ -1145,14 +1372,14 @@ export default function CreateDeckPage(): JSX.Element {
               onChange={(event) => consumeFile(event.target.files?.[0] ?? null)}
             />
 
-            {activeStep === 1 && (
+            {activeStep === 1 && file && (
               <LoadingButton
                 className="w-full md:w-auto"
                 onClick={handlePrepare}
                 disabled={!file || isDeriving}
                 isLoading={isDeriving}
                 loadingText="Analysiere"
-                text="Unterlagen analysieren"
+                text="Unterlagen verwenden"
               />
             )}
           </StepSection>
@@ -1161,128 +1388,163 @@ export default function CreateDeckPage(): JSX.Element {
         <div ref={step2Ref}>
           <StepSection
             id={2}
-            title="Parameter prüfen"
+            title="Wie möchtest du lernen?"
+            subtitle={step2Summary}
             active={activeStep === 2}
             complete={isStep2Complete}
-            disabled={!canOpenStep2}
-            onOpen={() => canOpenStep2 && goToStep(2)}
+            disabled={!canOpenStep2 || activeStep > 2}
+            onOpen={() => canOpenStep2 && activeStep <= 2 && goToStep(2)}
           >
-            <p className="text-xs text-muted-foreground">Prüfe die Vorschläge und passe sie vor der Generierung an.</p>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-muted-foreground">Titel</label>
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
-                  className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm shadow-sm focus:border-foreground/20 focus:outline-none"
+                  className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm shadow-sm placeholder:text-muted-foreground focus:border-foreground/20 focus:outline-none"
                   placeholder="Lernset-Titel"
                 />
               </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-muted-foreground">Lernziel</label>
+                  <div className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-xl border border-border bg-background p-1">
+                    {Object.entries(LEARNING_GOAL_LABELS).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                          learningGoal === value
+                            ? "bg-primary text-primary-foreground"
+                            : "text-foreground hover:bg-accent"
+                        }`}
+                        onClick={() => setLearningGoal(value as LearningGoalOption)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {LEARNING_GOAL_HINTS[learningGoal]}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-muted-foreground">Niveau</label>
+                  <div className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-xl border border-border bg-background p-1">
+                    {Object.entries(DIFFICULTY_LABELS).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                          difficulty === value
+                            ? "bg-primary text-primary-foreground"
+                            : "text-foreground hover:bg-accent"
+                        }`}
+                        onClick={() => setDifficulty(value as DifficultyOption)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {DIFFICULTY_HINTS[difficulty]}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-muted-foreground">Fragenanzahl</label>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={questionCountInput}
+                      onChange={(event) => handleQuestionCountInputChange(event.target.value)}
+                      onBlur={handleQuestionCountInputBlur}
+                      className="h-8 w-14 rounded-md border border-border bg-background px-2 text-center text-sm font-semibold text-foreground focus:border-foreground/20 focus:outline-none"
+                      aria-label="Fragenanzahl eingeben"
+                    />
+                    <span className="text-sm font-semibold text-foreground">Fragen</span>
+                    {questionCount > FREE_PLAN_QUESTION_LIMIT && (
+                      <img
+                        src="/icons/premium-crown.svg"
+                        alt="Premium"
+                        width={16}
+                        height={16}
+                        className="h-4 w-4 text-primary"
+                      />
+                    )}
+                  </div>
+                  <div className="pt-1">
+                    <div className="relative">
+                      <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2">
+                        <div className="h-2 rounded-full" style={sliderTrackStyle} />
+                      </div>
+                      <input
+                        type="range"
+                        min={MIN_QUESTION_COUNT}
+                        max={MAX_QUESTION_COUNT}
+                        step={1}
+                        value={questionCount}
+                        data-premium={questionCount > FREE_PLAN_QUESTION_LIMIT ? "true" : "false"}
+                        onChange={(event) => setQuestionCountWithHint(event.target.value)}
+                        className="premium-range relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent"
+                        aria-label="Fragenanzahl"
+                      />
+                      {questionCount > FREE_PLAN_QUESTION_LIMIT && (
+                        <div
+                          className="pointer-events-none absolute -top-9 whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow-sm"
+                          style={premiumHintPositionStyle}
+                        >
+                          Mit Premium-Abo möglich
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between text-xs font-medium text-muted-foreground">
+                      <span>{MIN_QUESTION_COUNT}</span>
+                      <span>{MAX_QUESTION_COUNT}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-muted-foreground">Fokus (optional)</label>
-                <p className="text-xs text-muted-foreground">
-                  Ein Fokus lenkt die Fragen auf einen bestimmten Themenausschnitt.
-                </p>
-                <input
-                  value={topicFocus}
-                  onChange={(event) => setTopicFocus(event.target.value)}
-                  className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm shadow-sm focus:border-foreground/20 focus:outline-none"
-                  placeholder="z. B. Prüfungsfragen, Kernkonzepte"
-                />
+                <details
+                  className="rounded-xl bg-background py-3"
+                  open={focusOpen}
+                  onToggle={(event) => setFocusOpen(event.currentTarget.open)}
+                >
+                  <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-foreground">
+                    <span>Erweiterte Optionen</span>
+                    <ChevronDownIcon
+                      className={`h-4 w-4 transition-transform ${focusOpen ? "rotate-180" : ""}`}
+                    />
+                  </summary>
+                  <div className="space-y-2 pt-3">
+                    <p className="text-xs text-muted-foreground">
+                      Ein Fokus lenkt die Fragen auf einen bestimmten Themenausschnitt.
+                    </p>
+                    <input
+                      value={topicFocus}
+                      onChange={(event) => setTopicFocus(event.target.value)}
+                      className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm shadow-sm placeholder:text-muted-foreground focus:border-foreground/20 focus:outline-none"
+                      placeholder="z. B. Prüfungsfragen, Kernkonzepte"
+                    />
+                  </div>
+                </details>
               </div>
             </div>
-
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-muted-foreground">Stil</label>
-              <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-border bg-background p-1">
-                {Object.entries(STYLE_LABELS).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                      style === value
-                        ? "bg-primary text-primary-foreground"
-                        : "text-foreground hover:bg-accent"
-                    }`}
-                    onClick={() => setStyle(value as StyleOption)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-muted-foreground">Niveau</label>
-              <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-border bg-background p-1">
-                {Object.entries(DIFFICULTY_LABELS).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                      difficulty === value
-                        ? "bg-primary text-primary-foreground"
-                        : "text-foreground hover:bg-accent"
-                    }`}
-                    onClick={() => setDifficulty(value as DifficultyOption)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-muted-foreground">Fragenanzahl</label>
-              <div className="rounded-xl border border-border bg-background px-3 py-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">2</span>
-                  <span className="font-semibold text-foreground">{count} Fragen</span>
-                  <span className="text-muted-foreground">10</span>
-                </div>
-                <input
-                  type="range"
-                  min={2}
-                  max={10}
-                  step={1}
-                  value={count}
-                  onChange={(event) => setCount(normalizeCount(event.target.value))}
-                  className="mt-2 w-full accent-primary"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-2 rounded-xl border border-border bg-background px-3 py-2">
-                <span className="text-xs text-muted-foreground">Mehr als 10 Fragen</span>
-                <Button type="button" variant="outline" size="sm" disabled>
-                  Premium
-                </Button>
-              </div>
-            </div>
-
-            {detectedTopics.length > 0 && (
-              <div className="space-y-2 rounded-xl border border-border bg-background px-3 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Erkannte Themen
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {detectedTopics.slice(0, 6).map((topic) => (
-                    <span
-                      key={topic}
-                      className="inline-flex items-center rounded-lg border border-border px-2 py-1 text-xs text-foreground"
-                    >
-                      {topic}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {activeStep === 2 && (
               <LoadingButton
-                className="w-full md:w-auto"
+                className="mt-8 w-full min-w-[300px] md:w-auto"
                 onClick={handleGenerate}
                 disabled={!canGenerate}
                 isLoading={isGenerating}
-                loadingText="Generiere"
+                loadingText="Generiere Fragen"
                 text="Fragen generieren"
               />
             )}
@@ -1292,115 +1554,120 @@ export default function CreateDeckPage(): JSX.Element {
         <div ref={step3Ref}>
           <StepSection
             id={3}
-            title="Vorschau bearbeiten"
+            title="Lernset finalisieren"
+            subtitle="Prüfe die Fragen und passe sie bei Bedarf an."
             active={activeStep === 3}
-            complete={isStep3Complete}
+            complete={false}
             disabled={!canOpenStep3}
             onOpen={() => canOpenStep3 && goToStep(3)}
           >
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start justify-between gap-3">
               <p className="text-sm text-muted-foreground">{cards.length} Karten</p>
-              <LoadingButton
-                variant="outline"
-                onClick={handleRegenerate}
-                disabled={!file || isGenerating}
-                isLoading={isGenerating}
-                loadingText="Regeneriere"
-                text="Neu generieren"
-              />
             </div>
 
-            {cards.map((card, index) => {
-              const questionEditing =
-                editingField?.index === index && editingField?.key === "question";
-              const answerEditing = editingField?.index === index && editingField?.key === "answer";
-              const isRefining = refineLoading?.index === index;
-
-              return (
-                <div key={index} className="space-y-3 rounded-2xl border border-border bg-background p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-foreground">Karte {index + 1}</p>
-                    <div className="flex items-center gap-2 flex-wrap justify-end">
-                      <LoadingButton
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleRefineCard(index, "expandAnswer")}
-                        disabled={isRefining || !card.question.trim() || !card.answer.trim()}
-                        isLoading={Boolean(isRefining && refineLoading?.action === "expandAnswer")}
-                        loadingText="Verfeinere"
-                        text="Antwort ausführlicher"
-                      />
-                      <LoadingButton
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleRefineCard(index, "condenseAnswer")}
-                        disabled={isRefining || !card.question.trim() || !card.answer.trim()}
-                        isLoading={Boolean(isRefining && refineLoading?.action === "condenseAnswer")}
-                        loadingText="Verfeinere"
-                        text="Antwort prägnanter"
-                      />
-                      <Button variant="outline" size="sm" onClick={() => handleRemoveCard(index)}>
-                        Entfernen
-                      </Button>
+            <div className="space-y-7">
+              {cards.map((card, index) => {
+                const isRefining = refineLoading?.index === index;
+                return (
+                  <div
+                    key={index}
+                    className="space-y-3 rounded-2xl border border-border bg-background/80 p-3 md:p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">Karte {index + 1}</p>
+                      <div className="flex items-center gap-2">
+                        {isRefining ||
+                        !card.question.trim() ||
+                        !card.answer.trim() ? (
+                          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" disabled>
+                            <SparklesIcon className="h-4 w-4" />
+                            {isRefining ? "Verbessere…" : "Verbessern"}
+                            <ChevronDownIcon className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : (
+                          <div className="relative" data-refine-menu>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenRefineMenuIndex((prev) => (prev === index ? null : index))
+                              }
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition hover:bg-accent"
+                            >
+                              <SparklesIcon className="h-4 w-4" />
+                              Verbessern
+                              <ChevronDownIcon className="h-3.5 w-3.5" />
+                            </button>
+                            {openRefineMenuIndex === index && (
+                              <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+                                {CARD_REFINE_OPTIONS.map((option) => (
+                                  <button
+                                    key={option.action}
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenRefineMenuIndex(null);
+                                      void handleRefineCard(index, option.action);
+                                    }}
+                                    className="block w-full px-3 py-2 text-left text-xs text-foreground transition hover:bg-accent disabled:opacity-50"
+                                    disabled={isRefining}
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 border-border bg-background text-foreground hover:bg-accent"
+                          onClick={() => handleRemoveCard(index)}
+                          disabled={isRefining}
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                          <span className="sr-only">Karte entfernen</span>
+                        </Button>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                      Frage
-                    </label>
-                    {questionEditing ? (
-                      <Textarea
-                        autoFocus
-                        rows={3}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                        Frage
+                      </label>
+                      <input
                         value={card.question}
                         onChange={(event) => handleUpdateCard(index, "question", event.target.value)}
-                        onBlur={() => setEditingField(null)}
-                        className="resize-none"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground/20 focus:outline-none"
+                        placeholder="Frage eingeben"
                       />
-                    ) : (
-                      <button
-                        type="button"
-                        className="w-full rounded-xl border border-border px-3 py-2 text-left text-sm text-foreground transition hover:border-foreground/30"
-                        onClick={() => setEditingField({ index, key: "question" })}
-                      >
-                        {card.question || "Frage hinzufügen"}
-                      </button>
-                    )}
-                  </div>
+                    </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                      Antwort
-                    </label>
-                    {answerEditing ? (
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                        Antwort
+                      </label>
                       <Textarea
-                        autoFocus
                         rows={3}
                         value={card.answer}
                         onChange={(event) => handleUpdateCard(index, "answer", event.target.value)}
-                        onBlur={() => setEditingField(null)}
-                        className="resize-none"
+                        className="min-h-[96px] resize-y rounded-lg"
+                        placeholder="Antwort eingeben"
                       />
-                    ) : (
-                      <button
-                        type="button"
-                        className="w-full rounded-xl border border-border px-3 py-2 text-left text-sm text-foreground transition hover:border-foreground/30"
-                        onClick={() => setEditingField({ index, key: "answer" })}
-                      >
-                        {card.answer || "Antwort hinzufügen"}
-                      </button>
-                    )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
 
-            <div className="flex flex-col gap-2 md:flex-row">
-              <Button variant="outline" onClick={handleAddCard}>
+            <div className="flex items-center justify-between gap-3">
+              <Button variant="outline" size="sm" onClick={handleAddCard}>
                 Karte hinzufügen
               </Button>
+            </div>
+
+            <div className="pt-2">
               <LoadingButton
+                className="w-full"
                 onClick={handleSave}
                 disabled={isSaving}
                 isLoading={isSaving}

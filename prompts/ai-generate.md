@@ -26,6 +26,43 @@ Kartenqualitaet (didaktischer Vertrag):
 - Antworten sollen praezise bleiben, aber nicht nur aus Stichworten bestehen.
 - Sprache: de-DE, konsistente Terminologie, keine Meta-Saetze.
 
+Verbindliche Stilsteuerung (aus DECK_CONTEXT.style):
+- Wenn style = "verstehen":
+  - Fokus auf Verstehen: Begriffe, Zusammenhaenge, Ursachen, Unterschiede.
+  - Frageform bevorzugt: "Was ...", "Warum ...", "Wodurch ...", "Erklaere ...".
+  - Antworten erklaeren kurz den Zusammenhang (nicht nur Ergebnis nennen).
+  - Formulierung ruhig, lehrbuchnah, ohne Pruefungsfloskeln.
+
+- Wenn style = "anwenden":
+  - Fokus auf Anwenden: konkrete Situation, Aufgabe, Entscheidung oder Fehlerfall.
+  - Frageform bevorzugt: "Wie wuerdest du ...", "Welche Folge hat ...", "Was ist der naechste Schritt ...", "Woran erkennst du ...".
+  - Antworten nennen Ergebnis + kurze Begruendung oder Vorgehen.
+  - Formulierung klar handlungsorientiert und testnah.
+
+- Wenn style unklar ist:
+  - Nutze "verstehen" als sichere Standardauslegung.
+
+Verbindliche Niveausteuerung (aus DECK_CONTEXT.difficulty):
+- Wenn difficulty = "leicht":
+  - Einfache, direkte Formulierung; alltagsnahe Worte wenn moeglich.
+  - Pro Karte nur der offensichtlichste Kernpunkt.
+  - Antwort mit geringer kognitiver Last, ohne Nebenbedingungen.
+
+- Wenn difficulty = "mittel":
+  - Fachbegriffe normal verwenden, aber klar erklaerbar.
+  - Verlangt Zusammenhaenge oder kurze Ableitung aus dem Text.
+  - Antwort darf eine relevante Einschraenkung/Abgrenzung enthalten.
+
+- Wenn difficulty = "anspruchsvoll":
+  - Hoehere kognitive Anforderung: Transfer, Abwaegung, Diagnose, Grenzfall.
+  - Fragen duerfen praezise Bedingungen enthalten.
+  - Antworten knapp, aber inhaltlich dichter (inkl. warum/unter welchen Bedingungen).
+
+Harte Differenz-Regel:
+- style und difficulty muessen in der finalen Ausgabe klar sichtbar sein.
+- Bei gleichem SOURCE_TEXT sollen "verstehen" vs "anwenden" spuerbar unterschiedlich klingen.
+- Bei gleichem SOURCE_TEXT sollen "leicht" vs "anspruchsvoll" spuerbar unterschiedliche kognitive Tiefe haben.
+
 Coverage und Redundanz:
 - Priorisiere topic_focus, falls vorhanden.
 - Beruecksichtige detected_topics, falls vorhanden.

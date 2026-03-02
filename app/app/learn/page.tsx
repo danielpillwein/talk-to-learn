@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -110,14 +111,15 @@ function renderHighlightedText(text: string, query: string): JSX.Element {
     return renderHighlightedSnippet(text, matchIndex, trimmed.length);
 }
 
-function SearchSortBar(props: {
+function HeroSearch(props: {
     searchInput: string;
     onSearchChange: (value: string) => void;
     onSearchClear: () => void;
     sortOption: SortOption;
     onSortChange: (value: SortOption) => void;
+    compact: boolean;
 }): JSX.Element {
-    const { searchInput, onSearchChange, onSearchClear, sortOption, onSortChange } = props;
+    const { searchInput, onSearchChange, onSearchClear, sortOption, onSortChange, compact } = props;
     const [isSortOpen, setIsSortOpen] = useState(false);
     const sortRef = useRef<HTMLDivElement | null>(null);
 
@@ -146,83 +148,94 @@ function SearchSortBar(props: {
     }, []);
 
     return (
-        <div className="mb-5 flex w-full flex-col gap-2 px-4 md:mb-6 md:flex-row md:items-center md:justify-between md:px-0">
-            <div className="w-full md:w-[360px]">
-                <div className="relative">
-                    <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                        type="text"
-                        value={searchInput}
-                        onChange={(event) => onSearchChange(event.target.value)}
-                        onKeyDown={(event) => {
-                            if (event.key === 'Escape') onSearchClear();
-                        }}
-                        placeholder="Decks durchsuchen…"
-                        className="h-11 w-full rounded-md border border-border bg-background pl-9 pr-10 text-sm text-foreground shadow-sm focus:border-foreground/20 focus:outline-none"
-                    />
-                    {searchInput.trim() && (
-                        <button
-                            type="button"
-                            onClick={onSearchClear}
-                            className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground"
-                            aria-label="Suche leeren"
-                        >
-                            <XMarkIcon className="h-4 w-4" />
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            <div ref={sortRef} className="relative w-full md:w-[260px]">
-                <button
-                    type="button"
-                    onClick={() => setIsSortOpen((prev) => !prev)}
-                    className="flex h-11 w-full items-center justify-between rounded-md border border-border bg-background px-3 text-sm text-foreground shadow-sm transition hover:border-foreground/30 focus:border-foreground/20 focus:outline-none"
-                    aria-haspopup="listbox"
-                    aria-expanded={isSortOpen}
-                >
-                    <span className="truncate text-left">
-                        <span className="text-muted-foreground">Sortierung: </span>
-                        <span>{selectedSortLabel}</span>
-                    </span>
-                    <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </button>
-
-                {isSortOpen && (
-                    <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-background shadow-lg">
-                        <ul role="listbox" className="py-1">
-                            {sortOptions.map((entry) => {
-                                const selected = entry.value === sortOption;
-                                return (
-                                    <li key={entry.value}>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                onSortChange(entry.value);
-                                                setIsSortOpen(false);
-                                            }}
-                                            className={`w-full px-3 py-2 text-left text-sm transition ${
-                                                selected
-                                                    ? 'bg-secondary text-secondary-foreground'
-                                                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
-                                            }`}
-                                            role="option"
-                                            aria-selected={selected}
-                                        >
-                                            {entry.label}
-                                        </button>
-                                    </li>
-                                );
-                            })}
-                        </ul>
+        <section className="deck-hero sticky top-[5.25rem] z-20 mt-8 mb-8 md:mt-10 md:mb-10">
+            <div className="w-full rounded-2xl border border-border bg-card/95 px-4 py-4 shadow-sm backdrop-blur-sm transition md:px-6 md:py-5">
+                {!compact && (
+                    <div className="mb-5 text-center md:mb-6">
+                        <h1 className="text-2xl font-semibold text-foreground md:text-3xl">Was möchtest du lernen?</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">Durchsuche deine Lernsets oder starte direkt.</p>
                     </div>
                 )}
+                <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div className="w-full text-left md:max-w-[640px] md:flex-1">
+                        <div className="relative">
+                            <MagnifyingGlassIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                            <input
+                                type="text"
+                                value={searchInput}
+                                onChange={(event) => onSearchChange(event.target.value)}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Escape') onSearchClear();
+                                }}
+                                placeholder="Decks durchsuchen…"
+                                className="h-12 w-full rounded-xl border border-border bg-background pl-11 pr-11 text-[15px] text-foreground shadow-sm transition placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/45 md:h-[52px]"
+                            />
+                            {searchInput.trim() && (
+                                <button
+                                    type="button"
+                                    onClick={onSearchClear}
+                                    className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                                    aria-label="Suche leeren"
+                                >
+                                    <XMarkIcon className="h-4 w-4" />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div ref={sortRef} className="relative w-full text-left md:w-[280px] md:max-w-[280px]">
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Sortieren nach</label>
+                        <button
+                            type="button"
+                            onClick={() => setIsSortOpen((prev) => !prev)}
+                            className="flex h-11 w-full items-center justify-between rounded-xl border border-border bg-background px-3 text-sm text-foreground shadow-sm transition hover:border-foreground/30 focus:border-foreground/20 focus:outline-none"
+                            aria-haspopup="listbox"
+                            aria-expanded={isSortOpen}
+                        >
+                            <span className="truncate text-left">{selectedSortLabel}</span>
+                            <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </button>
+
+                        {isSortOpen && (
+                            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-border bg-background shadow-lg">
+                                <ul role="listbox" className="py-1">
+                                    {sortOptions.map((entry) => {
+                                        const selected = entry.value === sortOption;
+                                        return (
+                                            <li key={entry.value}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        onSortChange(entry.value);
+                                                        setIsSortOpen(false);
+                                                    }}
+                                                    className={`w-full px-3 py-2 text-left text-sm transition ${
+                                                        selected
+                                                            ? 'bg-secondary text-secondary-foreground'
+                                                            : 'text-foreground hover:bg-accent hover:text-accent-foreground'
+                                                    }`}
+                                                    role="option"
+                                                    aria-selected={selected}
+                                                >
+                                                    {entry.label}
+                                                </button>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
-        </div>
+        </section>
     );
 }
 
 export default function LearnIndexPage(): JSX.Element {
+    const searchParams = useSearchParams();
+    const hasPlayedConfetti = useRef(false);
+    const [highlightedDeckId, setHighlightedDeckId] = useState('');
     const [items, setItems] = useState<FileStats[]>([]);
     const [isLoadingFiles, setIsLoadingFiles] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -230,6 +243,7 @@ export default function LearnIndexPage(): JSX.Element {
     const [searchInput, setSearchInput] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOption, setSortOption] = useState<SortOption>(DEFAULT_SORT);
+    const [isHeroCompact, setIsHeroCompact] = useState(false);
     const clearSearch = () => {
         setSearchInput('');
         setSearchTerm('');
@@ -299,6 +313,73 @@ export default function LearnIndexPage(): JSX.Element {
             window.clearTimeout(handle);
         };
     }, [searchInput]);
+
+    useEffect(() => {
+        const onScroll = () => {
+            setIsHeroCompact(window.scrollY > 80);
+        };
+        onScroll();
+        window.addEventListener('scroll', onScroll, { passive: true });
+        return () => {
+            window.removeEventListener('scroll', onScroll);
+        };
+    }, []);
+
+    useEffect(() => {
+        const nextDeckId = (searchParams.get('newDeck') ?? '').trim();
+        if (!nextDeckId) return;
+        setHighlightedDeckId((prev) => prev || nextDeckId);
+    }, [searchParams]);
+
+    useEffect(() => {
+        if (hasPlayedConfetti.current) return;
+        if (searchParams.get('saved') !== '1') return;
+        if (isLoadingFiles) return;
+        hasPlayedConfetti.current = true;
+
+        const play = async () => {
+            const module = await import('canvas-confetti');
+            const confetti = module.default;
+            confetti({
+                particleCount: 70,
+                spread: 55,
+                angle: 58,
+                startVelocity: 50,
+                origin: { x: 0.03, y: 0.98 },
+            });
+            confetti({
+                particleCount: 70,
+                spread: 55,
+                angle: 122,
+                startVelocity: 50,
+                origin: { x: 0.97, y: 0.98 },
+            });
+            window.setTimeout(() => {
+                confetti({
+                    particleCount: 55,
+                    spread: 70,
+                    angle: 62,
+                    startVelocity: 44,
+                    origin: { x: 0.04, y: 0.98 },
+                });
+                confetti({
+                    particleCount: 55,
+                    spread: 70,
+                    angle: 118,
+                    startVelocity: 44,
+                    origin: { x: 0.96, y: 0.98 },
+                });
+            }, 220);
+            window.setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('saved');
+                url.searchParams.delete('newDeck');
+                window.history.replaceState({}, '', url.toString());
+            }, 1200);
+        };
+
+        void play();
+    }, [searchParams, isLoadingFiles]);
 
     const toSlug = (id: string) => encodeURIComponent(id);
 
@@ -390,23 +471,25 @@ export default function LearnIndexPage(): JSX.Element {
     return (
         <div className="relative">
             <div className="relative flex flex-col gap-6">
-                {isLoadingFiles ? (
-                    <div className="flex min-h-[calc(100vh-7rem)] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-card p-10 shadow-sm">
-                        <ArrowPathIcon className="h-6 w-6 animate-spin text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">
-                            Einen Moment, wir laden gerade deine Lernsets...
-                        </p>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        <SearchSortBar
-                            searchInput={searchInput}
-                            onSearchChange={setSearchInput}
-                            onSearchClear={clearSearch}
-                            sortOption={sortOption}
-                            onSortChange={setSortOption}
-                        />
+                <div className="space-y-2">
+                    <HeroSearch
+                        searchInput={searchInput}
+                        onSearchChange={setSearchInput}
+                        onSearchClear={clearSearch}
+                        sortOption={sortOption}
+                        onSortChange={setSortOption}
+                        compact={isHeroCompact}
+                    />
 
+                    {isLoadingFiles ? (
+                        <div className="flex min-h-[calc(100vh-7rem)] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-card p-10 shadow-sm">
+                            <ArrowPathIcon className="h-6 w-6 animate-spin text-muted-foreground" />
+                            <p className="text-sm text-muted-foreground">
+                                Einen Moment, wir laden gerade deine Lernsets...
+                            </p>
+                        </div>
+                    ) : (
+                        <>
                         {items.length === 0 && (
                             <div className="rounded-3xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
                                 <p className="text-base text-foreground">Du hast noch keine Lernsets.</p>
@@ -433,6 +516,7 @@ export default function LearnIndexPage(): JSX.Element {
                             </div>
                         )}
 
+                        <div className="h-2 md:h-4" />
                         {visibleItems.map((file) => {
                             const total = file.totalQuestions || 1;
                             const knownPct = Math.round((file.known / total) * 100);
@@ -444,7 +528,14 @@ export default function LearnIndexPage(): JSX.Element {
                                 searchTerm.trim().length > 0 ? findQuestionAnswerMatch(file, searchTerm) : null;
 
                             return (
-                                <Card key={file.id} className="group border-border bg-card shadow-sm transition hover:border-foreground/20">
+                                <Card
+                                    key={file.id}
+                                    className={`group border-border bg-card shadow-sm transition hover:border-foreground/20 ${
+                                        highlightedDeckId && highlightedDeckId === file.id
+                                            ? 'ring-1 ring-warning shadow-[0_0_0_1px_color-mix(in_srgb,var(--warning)_82%,transparent),0_0_32px_8px_color-mix(in_srgb,var(--warning)_48%,transparent)]'
+                                            : ''
+                                    }`}
+                                >
                                     <CardContent className="flex flex-col gap-4 p-5">
                                         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                             <div className="min-w-0 flex flex-1 items-center">
@@ -549,8 +640,9 @@ export default function LearnIndexPage(): JSX.Element {
                                 </Card>
                             );
                         })}
-                    </div>
-                )}
+                        </>
+                    )}
+                </div>
 
                 {error && (
                     <Alert variant="destructive" className="mt-4">

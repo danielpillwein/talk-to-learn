@@ -25,6 +25,8 @@ export default function RootLayout({
   return (
     <html lang="de" className="dark">
       <head>
+        <link rel="preload" href="/icons/refinement-sparkles.svg" as="image" type="image/svg+xml" />
+        <link rel="preload" href="/icons/trash-white.svg" as="image" type="image/svg+xml" />
         <Script
           id="theme-init"
           strategy="beforeInteractive"
