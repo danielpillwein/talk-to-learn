@@ -10,6 +10,7 @@ type InfoTooltipProps = {
   className?: string;
   positionClassName?: string;
   contentClassName?: string;
+  arrowClassName?: string;
   children?: ReactNode;
 };
 
@@ -21,6 +22,7 @@ export function InfoTooltip({
   className,
   positionClassName,
   contentClassName,
+  arrowClassName,
   children,
 }: InfoTooltipProps): JSX.Element {
   const tooltipPositionClass =
@@ -106,7 +108,7 @@ export function InfoTooltip({
           <div className="absolute inset-0 rounded-[10px] opacity-0" style={{ background: "transparent" }} />
         </div>
           <div
-            className={arrowClass}
+            className={`${arrowClass} ${arrowClassName ?? ""}`}
             style={{
               backgroundColor: "color-mix(in srgb, var(--color-info) 14%, var(--color-card))",
               ...arrowBorderStyle,

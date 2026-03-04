@@ -70,7 +70,7 @@ export function AppHeader(): JSX.Element {
     );
   }, [user?.image, user?.name, avatarFailed]);
 
-  const isLearnPage = pathname?.startsWith("/app/learn");
+  const hasMobileMenu = pathname?.startsWith("/app/learn") || pathname?.startsWith("/app/create");
 
   return (
     <>
@@ -162,7 +162,7 @@ export function AppHeader(): JSX.Element {
                 </div>
               )}
             </div>
-            {isLearnPage && (
+            {hasMobileMenu && (
               <button
                 type="button"
                 onClick={() => setMobileLearnMenuOpen(true)}
@@ -175,7 +175,7 @@ export function AppHeader(): JSX.Element {
           </div>
         </div>
       </nav>
-      {isLearnPage && (
+      {hasMobileMenu && (
         <div
           className={`md:hidden ${mobileLearnMenuOpen ? "pointer-events-auto" : "pointer-events-none"}`}
         >

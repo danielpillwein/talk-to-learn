@@ -334,6 +334,14 @@ export default function LearnIndexPage(): JSX.Element {
     }, [searchParams]);
 
     useEffect(() => {
+        if (searchParams.get('deleted') !== '1') return;
+        window.scrollTo({ top: 0, left: 0 });
+        const url = new URL(window.location.href);
+        url.searchParams.delete('deleted');
+        window.history.replaceState({}, '', url.toString());
+    }, [searchParams]);
+
+    useEffect(() => {
         if (hasPlayedConfetti.current) return;
         if (searchParams.get('saved') !== '1') return;
         if (isLoadingFiles) return;
@@ -378,6 +386,7 @@ export default function LearnIndexPage(): JSX.Element {
                 const url = new URL(window.location.href);
                 url.searchParams.delete('saved');
                 url.searchParams.delete('newDeck');
+                url.searchParams.delete('deleted');
                 window.history.replaceState({}, '', url.toString());
             }, 1200);
         };

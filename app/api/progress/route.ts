@@ -15,6 +15,23 @@ import {
   resetDeckProgress,
 } from "@/lib/progress";
 
+function toDisplayStats(
+  learningStage: "intro" | "scaffolded" | "free",
+  cards: Array<{ seen: boolean }>,
+  progress: Array<{ status: string }>
+) {
+  if (learningStage === "intro") {
+    const known = cards.reduce((acc, card) => (card.seen ? acc + 1 : acc), 0);
+    return {
+      known,
+      learning: 0,
+      new: Math.max(0, cards.length - known),
+    };
+  }
+
+  return computeStats(progress, cards.length);
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const session = await auth();
   if (!session?.user?.id) {
@@ -41,7 +58,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   });
 
   return NextResponse.json({
-    stats: computeStats(progress, cards.length),
+    stats: toDisplayStats(learningStage, cards, progress),
     nextQuestionId: computeNextQuestionId(learningStage, cards, progress, cardIdToIndex),
     learningPhase: learningStage,
     learningStage,
@@ -205,7 +222,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const cardIdToIndex = new Map(cards.map((card, index) => [card.id, index]));
 
   return NextResponse.json({
-    stats: computeStats(progress, cards.length),
+    stats: toDisplayStats(learningStage, cards, progress),
     nextQuestionId: computeNextQuestionId(learningStage, cards, progress, cardIdToIndex),
     learningPhase: learningStage,
     learningStage,
