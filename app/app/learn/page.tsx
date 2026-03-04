@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InfoTooltip } from '@/components/ui/info-tooltip';
+import { useToast } from '@/components/ui/toast/useToast';
 import { ArrowPathIcon, ChevronDownIcon, MagnifyingGlassIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { SpacedRepetitionManager } from '@/lib/spaced-repetition';
 
@@ -234,6 +235,7 @@ function HeroSearch(props: {
 
 export default function LearnIndexPage(): JSX.Element {
     const searchParams = useSearchParams();
+    const toast = useToast();
     const hasPlayedConfetti = useRef(false);
     const [highlightedDeckId, setHighlightedDeckId] = useState('');
     const [items, setItems] = useState<FileStats[]>([]);
@@ -336,6 +338,7 @@ export default function LearnIndexPage(): JSX.Element {
         if (searchParams.get('saved') !== '1') return;
         if (isLoadingFiles) return;
         hasPlayedConfetti.current = true;
+        window.scrollTo({ top: 0, left: 0 });
 
         const play = async () => {
             const module = await import('canvas-confetti');
@@ -354,6 +357,7 @@ export default function LearnIndexPage(): JSX.Element {
                 startVelocity: 50,
                 origin: { x: 0.97, y: 0.98 },
             });
+            toast.success('Lernset gespeichert', 'Dein neues Lernset ist jetzt bereit.');
             window.setTimeout(() => {
                 confetti({
                     particleCount: 55,
@@ -378,8 +382,14 @@ export default function LearnIndexPage(): JSX.Element {
             }, 1200);
         };
 
-        void play();
-    }, [searchParams, isLoadingFiles]);
+        const timeoutId = window.setTimeout(() => {
+            void play();
+        }, 300);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, [searchParams, isLoadingFiles, toast]);
 
     const toSlug = (id: string) => encodeURIComponent(id);
 
@@ -482,7 +492,7 @@ export default function LearnIndexPage(): JSX.Element {
                     />
 
                     {isLoadingFiles ? (
-                        <div className="flex min-h-[calc(100vh-7rem)] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-card p-10 shadow-sm">
+                        <div className="flex min-h-[50vh] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-card p-10 shadow-sm">
                             <ArrowPathIcon className="h-6 w-6 animate-spin text-muted-foreground" />
                             <p className="text-sm text-muted-foreground">
                                 Einen Moment, wir laden gerade deine Lernsets...

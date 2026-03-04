@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { LoadingButton } from "@/components/ui/loading-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,9 +32,9 @@ export default function SignInPage(): JSX.Element {
       <main className="relative flex min-h-screen items-center justify-center bg-background px-6 py-12 text-foreground md:py-16">
         <Card className="relative w-full max-w-md bg-card p-6 text-center border-0 shadow-none">
           <div className="flex flex-col items-center gap-4">
-            <span className="session-loader" aria-hidden="true" />
+            <ArrowPathIcon className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
             <p className="text-sm text-muted-foreground">
-              kurze Pause für dich :) 
+              Bitte kurz warten 
               <br/><br/>
               Checken gerade, ob du schon angemeldet bist...
             </p>

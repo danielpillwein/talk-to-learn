@@ -22,14 +22,27 @@ const alertVariants = cva(
 const Alert = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof alertVariants>
->(({ className, variant, ...props }, ref) => (
-  <div
-    ref={ref}
-    role="alert"
-    className={cn(alertVariants({ variant }), className)}
-    {...props}
-  />
-))
+>(({ className, variant, style, ...props }, ref) => {
+  const infoSurfaceStyle =
+    variant === "destructive"
+      ? undefined
+      : {
+          backgroundColor: "color-mix(in srgb, var(--color-info) 14%, var(--color-card))",
+          borderColor: "color-mix(in srgb, var(--color-info) 30%, var(--color-border))",
+          borderLeftColor: "var(--color-info)",
+          borderLeftWidth: "4px",
+        };
+
+  return (
+    <div
+      ref={ref}
+      role="alert"
+      className={cn(alertVariants({ variant }), className)}
+      style={{ ...infoSurfaceStyle, ...style }}
+      {...props}
+    />
+  );
+})
 Alert.displayName = "Alert"
 
 const AlertTitle = React.forwardRef<

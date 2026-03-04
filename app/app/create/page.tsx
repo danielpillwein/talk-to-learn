@@ -1,22 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LoadingButton } from "@/components/ui/loading-button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/toast/useToast";
 import {
   ArrowUpTrayIcon,
-  ArrowsRightLeftIcon,
   ChevronDownIcon,
   SparklesIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
-import { clearHeroUpload, loadHeroUpload } from "@/lib/hero-upload-store";
+import { clearHeroUpload, loadHeroUpload, saveHeroUpload } from "@/lib/hero-upload-store";
 
 type CardDraft = {
   question: string;
@@ -32,7 +31,6 @@ type DifficultyOption = "leicht" | "mittel" | "anspruchsvoll";
 type LearningGoalOption = "verstehen" | "anwenden";
 type ApiStyleOption = "kompakt" | "pruefungsnah" | "erklaerend";
 type QuestionCount = number;
-type RetryAction = "derive" | "generate" | "regenerate" | "save";
 type RefineAction =
   | "expandAnswer"
   | "condenseAnswer"
@@ -45,7 +43,6 @@ type ApiErrorState = {
   code?: string;
   message: string;
   retryable: boolean;
-  action?: RetryAction;
 };
 
 type WorkingDraftPayload = {
@@ -85,7 +82,7 @@ const MAX_UPLOAD_MB = 10;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
 const STAGE_DEFS: Array<{ key: StageKey; label: string }> = [
-  { key: "analyze", label: "Unterlagen verwenden" },
+  { key: "analyze", label: "Unterlagen werden hochgeladen" },
   { key: "topics", label: "Themen erkennen" },
   { key: "generate", label: "Fragen generieren" },
   { key: "quality", label: "Qualität prüfen" },
@@ -119,7 +116,20 @@ const DIFFICULTY_HINTS: Record<DifficultyOption, string> = {
 const MIN_QUESTION_COUNT = 2;
 const FREE_PLAN_QUESTION_LIMIT = 10;
 const MAX_QUESTION_COUNT = 25;
+const MIN_CARD_COUNT = 2;
+const MAX_CARD_COUNT = 25;
 const PREMIUM_BOUNDARY_VALUE = FREE_PLAN_QUESTION_LIMIT + 0.5;
+const QUESTION_COUNT_SCRUB_STEP_PX = 12;
+const CARD_DELETE_ANIMATION_MS = 220;
+const CARD_FEEDBACK_HIGHLIGHT_MS = 1600;
+const TITLE_MAX_LENGTH = 45;
+const FILE_MISSING_ERROR_MESSAGE =
+  "Die Originaldatei ist nicht mehr verfügbar. Lade sie kurz neu hoch, um Fragen zu generieren.";
+const CREATE_LOADER_VIDEO_SOURCES = [
+  "/mascot/otter-reading.webm",
+  "/mascot/otter-writing.webm",
+  "/mascot/otter-saving.webm",
+] as const;
 const CARD_REFINE_OPTIONS: Array<{ action: RefineAction; label: string }> = [
   { action: "expandAnswer", label: "Ausführlicher" },
   { action: "condenseAnswer", label: "Prägnanter" },
@@ -270,14 +280,6 @@ function delay(ms: number): Promise<void> {
   });
 }
 
-function formatFileSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${Math.max(1, Math.round(kb))} KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(2)} MB`;
-}
-
 function FlowStepper(props: {
   activeStep: FlowStepId;
   canOpenStep2: boolean;
@@ -321,7 +323,7 @@ function FlowStepper(props: {
                   } ${clickable ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
                   disabled={!clickable}
                 >
-                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border text-xs font-semibold text-foreground">
+                  <span className="inline-flex h-6 w-6 shrink-0 aspect-square items-center justify-center rounded-full border border-border text-xs font-semibold text-foreground">
                     {complete ? "✓" : stepId}
                   </span>
                   <span className="text-sm font-medium text-foreground">{entry.title}</span>
@@ -358,7 +360,7 @@ function StepSection(props: {
         className="flex w-full items-center gap-3 px-5 py-4 text-left disabled:cursor-not-allowed disabled:opacity-60"
       >
         <div className="flex items-center gap-3">
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border text-xs font-semibold text-foreground">
+          <span className="inline-flex h-7 w-7 shrink-0 aspect-square items-center justify-center rounded-full border border-border text-xs font-semibold text-foreground">
             {complete ? "✓" : id}
           </span>
           <div className="space-y-0.5">
@@ -415,6 +417,7 @@ export default function CreateDeckPage(): JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
+  const toast = useToast();
   const user = session?.user;
   const forceNewFlow = searchParams.get("new") === "1";
 
@@ -427,8 +430,19 @@ export default function CreateDeckPage(): JSX.Element {
   const hasTrackedCardEdit = useRef(false);
   const generateStartedAt = useRef<number | null>(null);
   const redirectFallbackTimer = useRef<number | null>(null);
+  const refinedHighlightTimer = useRef<number | null>(null);
+  const deleteCardTimer = useRef<number | null>(null);
+  const cardElementRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const allowNavigationRef = useRef(false);
+  const titleLimitToastAtRef = useRef(0);
+  const questionCountScrubRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startValue: number;
+  } | null>(null);
 
   const [isDragging, setIsDragging] = useState(false);
+  const [isScrubbingQuestionCount, setIsScrubbingQuestionCount] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
@@ -443,6 +457,9 @@ export default function CreateDeckPage(): JSX.Element {
   const [focusOpen, setFocusOpen] = useState(false);
 
   const [cards, setCards] = useState<CardDraft[]>([]);
+  const [cardFeedback, setCardFeedback] = useState<{ index: number; type: "success" | "error" } | null>(null);
+  const [deletingCardIndex, setDeletingCardIndex] = useState<number | null>(null);
+  const [deletingCardHeight, setDeletingCardHeight] = useState<number>(0);
 
   const [analysisReady, setAnalysisReady] = useState(false);
 
@@ -457,13 +474,15 @@ export default function CreateDeckPage(): JSX.Element {
   const [loaderOpen, setLoaderOpen] = useState(false);
   const [activeStage, setActiveStage] = useState<StageKey | null>(null);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
-
-  const [error, setError] = useState<ApiErrorState | null>(null);
+  const [showLeaveConfirmModal, setShowLeaveConfirmModal] = useState(false);
+  const [pendingLeaveHref, setPendingLeaveHref] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<FlowStepId>(1);
+  const [isDraftHydrated, setIsDraftHydrated] = useState(false);
 
   const hasPremiumAccess = false;
   const userPlan: "free" | "premium" = hasPremiumAccess ? "premium" : "free";
   const isPremiumRequired = questionCount > FREE_PLAN_QUESTION_LIMIT && userPlan === "free";
+  const freePlanCardLimit = FREE_PLAN_QUESTION_LIMIT;
   const premiumBoundaryPercent =
     ((PREMIUM_BOUNDARY_VALUE - MIN_QUESTION_COUNT) / (MAX_QUESTION_COUNT - MIN_QUESTION_COUNT)) * 100;
   const questionCountPercent =
@@ -497,16 +516,20 @@ export default function CreateDeckPage(): JSX.Element {
       : questionCountPercent <= 12
         ? { left: "0", right: "auto", transform: "translateX(0)" }
         : { left: `${questionCountPercent}%`, transform: "translateX(-50%)" };
-  const canGenerate = analysisReady && !!file && !isGenerating;
   const canOpenStep2 = analysisReady;
   const canOpenStep3 = cards.length > 0;
-  const isStep1Complete = Boolean(file);
+  const isStep1Complete = Boolean(file || fileName);
   const isStep2Complete = cards.length > 0;
   const isStep3Complete = cards.length > 0;
+  const isTitleMissing = title.trim().length === 0;
+  const isAtMinCardCount = cards.length <= MIN_CARD_COUNT;
+  const isAtMaxCardCount = cards.length >= MAX_CARD_COUNT;
+  const step1Summary = isStep1Complete && fileName ? `Datei: ${fileName}` : undefined;
   const step2Summary =
     cards.length > 0
       ? `Titel: ${title.trim() || "Unbenannt"} · Niveau: ${DIFFICULTY_LABELS[difficulty]} · Stil: ${LEARNING_GOAL_LABELS[learningGoal]}`
       : undefined;
+  const hasUnsavedCreateDraft = (analysisReady || cards.length > 0) && !isSaving;
 
   const goToStep = (nextStep: FlowStepId) => {
     setActiveStep(nextStep);
@@ -521,6 +544,7 @@ export default function CreateDeckPage(): JSX.Element {
   };
 
   const navigateToLearnAfterSave = (target: string) => {
+    allowNavigationRef.current = true;
     router.replace(target);
 
     if (redirectFallbackTimer.current !== null) {
@@ -540,8 +564,14 @@ export default function CreateDeckPage(): JSX.Element {
     }
     if (isDeriving) return "Unterlagen verwenden";
     if (isGenerating) return "Fragen generieren";
+    if (isSaving) return "Lernset speichern";
     return "Verarbeite Anfrage";
-  }, [activeStage, isDeriving, isGenerating]);
+  }, [activeStage, isDeriving, isGenerating, isSaving]);
+  const loaderVideoSrc = isSaving
+    ? "/mascot/otter-saving.webm"
+    : isDeriving
+      ? "/mascot/otter-reading.webm"
+      : "/mascot/otter-writing.webm";
 
   const trackEvent = (event: string, payload: Record<string, unknown>) => {
     void fetch("/api/analytics/event", {
@@ -554,13 +584,14 @@ export default function CreateDeckPage(): JSX.Element {
     });
   };
 
-  const setActionError = (nextError: ApiErrorState | null, action?: RetryAction) => {
-    if (!nextError) {
-      setError(null);
-      return;
-    }
+  const showErrorToast = (message: string, title = "Fehler") => {
+    const safeMessage = String(message).trim();
+    if (!safeMessage) return;
+    toast.error(title, safeMessage);
+  };
 
-    setError({ ...nextError, action });
+  const showApiErrorToast = (error: ApiErrorState, title = "Fehler") => {
+    showErrorToast(error.message, title);
   };
 
   const setQuestionCountWithHint = (nextValue: unknown) => {
@@ -598,6 +629,55 @@ export default function CreateDeckPage(): JSX.Element {
     setQuestionCountInput(String(normalized));
   };
 
+  const handleTitleChange = (nextValue: string) => {
+    if (nextValue.length <= TITLE_MAX_LENGTH) {
+      setTitle(nextValue);
+      return;
+    }
+
+    setTitle(nextValue.slice(0, TITLE_MAX_LENGTH));
+    const now = Date.now();
+    if (now - titleLimitToastAtRef.current < 1400) return;
+    titleLimitToastAtRef.current = now;
+    toast.info("Maximale Länge erreicht", `Titel darf maximal ${TITLE_MAX_LENGTH} Zeichen haben.`);
+  };
+
+  const handleQuestionCountScrubStart = (event: ReactPointerEvent<HTMLInputElement>) => {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    questionCountScrubRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startValue: questionCount,
+    };
+    setIsScrubbingQuestionCount(false);
+  };
+
+  const handleQuestionCountScrubMove = (event: ReactPointerEvent<HTMLInputElement>) => {
+    const scrub = questionCountScrubRef.current;
+    if (!scrub || scrub.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - scrub.startX;
+    const stepDelta = Math.trunc(deltaX / QUESTION_COUNT_SCRUB_STEP_PX);
+    if (stepDelta === 0) return;
+    if (!isScrubbingQuestionCount) {
+      setIsScrubbingQuestionCount(true);
+      event.currentTarget.blur();
+    }
+    const nextValue = normalizeCount(scrub.startValue + stepDelta);
+    setQuestionCountWithHint(nextValue);
+    setQuestionCountInput(String(nextValue));
+  };
+
+  const stopQuestionCountScrub = (event: ReactPointerEvent<HTMLInputElement>) => {
+    const scrub = questionCountScrubRef.current;
+    if (!scrub || scrub.pointerId !== event.pointerId) return;
+    questionCountScrubRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setIsScrubbingQuestionCount(false);
+  };
+
   const resetFlowForNewFile = (selectedFile: File | null) => {
     setFile(selectedFile);
     setFileName(selectedFile?.name ?? "");
@@ -606,34 +686,32 @@ export default function CreateDeckPage(): JSX.Element {
     setDetectedTopics([]);
     setTopicFocus("");
     setFocusOpen(false);
-    setError(null);
     setActiveStep(1);
   };
 
-  const consumeFile = (selectedFile: File | null) => {
+  const consumeFile = (selectedFile: File | null, options?: { persist?: boolean }) => {
     if (!selectedFile) return;
+    if (isDeriving) return;
     if (!isAllowedFile(selectedFile)) {
-      setActionError(
-        {
-          message: "Bitte lade eine PDF-, TXT- oder MD-Datei hoch.",
-          retryable: false,
-        },
-        undefined
-      );
+      toast.error("Upload fehlgeschlagen", "Bitte lade eine PDF-, TXT- oder MD-Datei hoch.");
       return;
     }
     if (selectedFile.size > MAX_UPLOAD_BYTES) {
-      setActionError(
-        {
-          message: `Die Datei ist größer als ${MAX_UPLOAD_MB}MB. Komprimiere sie oder teile sie auf.`,
-          retryable: false,
-        },
-        undefined
+      toast.error(
+        "Upload fehlgeschlagen",
+        `Die Datei ist größer als ${MAX_UPLOAD_MB}MB. Komprimiere sie bitte, oder verwende eine andere.`
       );
       return;
     }
 
+    if (options?.persist !== false) {
+      void saveHeroUpload(selectedFile).catch(() => {
+        // Ignore cache write failures and continue with the upload flow.
+      });
+    }
+
     resetFlowForNewFile(selectedFile);
+    void handlePrepare(selectedFile);
   };
 
   const hydrateFromDerive = (payload: DeriveResponse) => {
@@ -651,26 +729,20 @@ export default function CreateDeckPage(): JSX.Element {
     setFocusOpen(false);
   };
 
-  const handlePrepare = async () => {
-    if (!file) {
-      setActionError(
-        {
-          message: "Bitte wähle zuerst eine Datei aus.",
-          retryable: false,
-        },
-        undefined
-      );
+  const handlePrepare = async (selectedFile?: File | null) => {
+    const fileToPrepare = selectedFile ?? file;
+    if (!fileToPrepare) {
+      toast.info("Datei fehlt", "Bitte wähle zuerst eine Datei aus.");
       return;
     }
 
-    setActionError(null);
     setIsDeriving(true);
     setLoaderOpen(true);
     setActiveStage("analyze");
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", fileToPrepare);
 
       const response = await fetch("/api/ai/derive-file", {
         method: "POST",
@@ -679,7 +751,7 @@ export default function CreateDeckPage(): JSX.Element {
 
       if (!response.ok) {
         const parsed = await parseApiError(response, "Die Dokumentanalyse ist fehlgeschlagen.");
-        setActionError(parsed, "derive");
+        showApiErrorToast(parsed, "Analyse fehlgeschlagen");
         return;
       }
 
@@ -691,9 +763,20 @@ export default function CreateDeckPage(): JSX.Element {
 
       setAnalysisReady(true);
       goToStep(2);
+      toast.addToast({
+        type: "success",
+        title: "Datei hochgeladen",
+        message: "Deine Unterlagen wurden erfolgreich verarbeitet.",
+        durationMs: 5500,
+      });
       trackEvent("derive_completed", {
         detected_topics_count: payload.detectedTopics?.length ?? 0,
       });
+    } catch {
+      toast.error(
+        "Analyse fehlgeschlagen",
+        "Unerwarteter Fehler beim Verarbeiten der Datei. Bitte versuche es erneut."
+      );
     } finally {
       setIsDeriving(false);
       setActiveStage(null);
@@ -701,20 +784,12 @@ export default function CreateDeckPage(): JSX.Element {
     }
   };
 
-  const runGeneration = async (action: "generate" | "regenerate") => {
-    if (!file) {
-      setActionError(
-        {
-          message:
-            "Die Originaldatei ist nicht mehr verfügbar. Lade sie kurz neu hoch, um wieder zu generieren.",
-          retryable: false,
-        },
-        undefined
-      );
+  const runGeneration = async (action: "generate" | "regenerate", sourceFile: File | null) => {
+    if (!sourceFile) {
+      toast.error("Datei nicht verfügbar", FILE_MISSING_ERROR_MESSAGE);
       return;
     }
 
-    setActionError(null);
     setIsGenerating(true);
     setLoaderOpen(true);
     setActiveStage("generate");
@@ -722,7 +797,7 @@ export default function CreateDeckPage(): JSX.Element {
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", sourceFile);
       formData.append("title", title.trim());
       formData.append("style", styleFromLearningGoal(learningGoal));
       formData.append("difficulty", difficulty);
@@ -737,7 +812,7 @@ export default function CreateDeckPage(): JSX.Element {
 
       if (!response.ok) {
         const parsed = await parseApiError(response, "Die Generierung ist fehlgeschlagen.");
-        setActionError(parsed, action === "generate" ? "generate" : "regenerate");
+        showApiErrorToast(parsed, "Generierung fehlgeschlagen");
         return;
       }
 
@@ -754,12 +829,9 @@ export default function CreateDeckPage(): JSX.Element {
         : [];
 
       if (nextCards.length === 0) {
-        setActionError(
-          {
-            message: "Es konnten keine brauchbaren Fragen erzeugt werden. Bitte erneut versuchen.",
-            retryable: true,
-          },
-          action === "generate" ? "generate" : "regenerate"
+        toast.error(
+          "Keine Fragen erzeugt",
+          "Es konnten keine brauchbaren Fragen erzeugt werden. Bitte erneut versuchen."
         );
         return;
       }
@@ -772,6 +844,11 @@ export default function CreateDeckPage(): JSX.Element {
       setCards(nextCards);
       setAnalysisReady(true);
       goToStep(3);
+      if (action === "generate") {
+        toast.success("Fragen generiert", `${nextCards.length} Fragen wurden erstellt.`);
+      } else {
+        toast.success("Fragen aktualisiert", `${nextCards.length} Fragen wurden neu erstellt.`);
+      }
 
       const elapsedMs =
         generateStartedAt.current === null
@@ -794,6 +871,11 @@ export default function CreateDeckPage(): JSX.Element {
           card_count: nextCards.length,
         });
       }
+    } catch {
+      toast.error(
+        "Generierung fehlgeschlagen",
+        "Unerwarteter Fehler bei der Fragengenerierung. Bitte versuche es erneut."
+      );
     } finally {
       setIsGenerating(false);
       setActiveStage(null);
@@ -801,16 +883,78 @@ export default function CreateDeckPage(): JSX.Element {
     }
   };
 
+  const validateGenerationBeforeSubmit = (sourceFile: File | null): sourceFile is File => {
+    if (isGenerating || isDeriving) {
+      toast.info("Bitte warten", "Unterlagen werden hochgeladen. Bitte kurz warten.");
+      return false;
+    }
+
+    if (!sourceFile) {
+      toast.error("Datei nicht verfügbar", FILE_MISSING_ERROR_MESSAGE);
+      return false;
+    }
+
+    if (!isAllowedFile(sourceFile)) {
+      toast.error("Ungültige Datei", "Bitte lade eine PDF-, TXT- oder MD-Datei hoch.");
+      return false;
+    }
+
+    if (sourceFile.size > MAX_UPLOAD_BYTES) {
+      toast.error(
+        "Datei zu groß",
+        `Die Datei ist größer als ${MAX_UPLOAD_MB}MB. Komprimiere sie bitte, oder verwende eine andere.`
+      );
+      return false;
+    }
+
+    if (!analysisReady) {
+      toast.info("Analyse fehlt", "Bitte lade zuerst Unterlagen hoch, bevor du Fragen generierst.");
+      return false;
+    }
+
+    if (!title.trim()) {
+      toast.info("Titel fehlt", "Bitte lege einen Titel fest, bevor du Fragen generierst.");
+      return false;
+    }
+
+    const normalizedCount = normalizeCount(questionCountInput || questionCount);
+    setQuestionCountWithHint(normalizedCount);
+    setQuestionCountInput(String(normalizedCount));
+    return true;
+  };
+
+  const ensureGenerationFile = async (): Promise<File | null> => {
+    if (file) return file;
+
+    const restored = await loadHeroUpload();
+    if (!restored) return null;
+    if (fileName && restored.name !== fileName) return null;
+
+    setFile(restored);
+    if (!fileName) {
+      setFileName(restored.name);
+    }
+    return restored;
+  };
+
   const handleGenerate = async () => {
+    const sourceFile = await ensureGenerationFile();
+    if (!validateGenerationBeforeSubmit(sourceFile)) return;
     if (isPremiumRequired) {
       setShowPremiumModal(true);
       return;
     }
-    await runGeneration("generate");
+    await runGeneration("generate", sourceFile);
   };
 
   const handleRegenerate = async () => {
-    await runGeneration("regenerate");
+    const sourceFile = await ensureGenerationFile();
+    if (!validateGenerationBeforeSubmit(sourceFile)) return;
+    if (isPremiumRequired) {
+      setShowPremiumModal(true);
+      return;
+    }
+    await runGeneration("regenerate", sourceFile);
   };
 
   const handleUpdateCard = (index: number, key: keyof CardDraft, value: string) => {
@@ -825,52 +969,124 @@ export default function CreateDeckPage(): JSX.Element {
   };
 
   const handleAddCard = () => {
+    if (userPlan === "free" && cards.length >= freePlanCardLimit) {
+      setShowPremiumModal(true);
+      return;
+    }
+    if (isAtMaxCardCount) {
+      toast.info("Maximum erreicht", `Ein Lernset kann maximal ${MAX_CARD_COUNT} Fragen enthalten.`);
+      return;
+    }
+    const lastCard = cards[cards.length - 1];
+    if (lastCard && !lastCard.question.trim() && !lastCard.answer.trim()) {
+      return;
+    }
     setCards((prev) => [...prev, { question: "", answer: "" }]);
   };
 
   const handleRemoveCard = (index: number) => {
-    setCards((prev) => prev.filter((_, idx) => idx !== index));
+    if (isAtMinCardCount) {
+      const cardElement = cardElementRefs.current[index];
+      if (cardElement) {
+        cardElement.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+      if (refinedHighlightTimer.current !== null) {
+        window.clearTimeout(refinedHighlightTimer.current);
+      }
+      setCardFeedback({ index, type: "error" });
+      refinedHighlightTimer.current = window.setTimeout(() => {
+        setCardFeedback(null);
+        refinedHighlightTimer.current = null;
+      }, CARD_FEEDBACK_HIGHLIGHT_MS);
+      toast.error("Löschen nicht möglich", `Mindestens ${MIN_CARD_COUNT} Fragen sind erforderlich.`);
+      return;
+    }
+    if (deletingCardIndex !== null) return;
+
+    const cardElement = cardElementRefs.current[index];
+    const measuredHeight = cardElement?.offsetHeight ?? 0;
+    setDeletingCardHeight(measuredHeight);
+    setDeletingCardIndex(index);
+    setOpenRefineMenuIndex((prev) => (prev === index ? null : prev));
+
+    if (deleteCardTimer.current !== null) {
+      window.clearTimeout(deleteCardTimer.current);
+    }
+
+    deleteCardTimer.current = window.setTimeout(() => {
+      setCards((prev) => prev.filter((_, idx) => idx !== index));
+      setCardFeedback((prev) => {
+        if (prev === null) return prev;
+        if (prev.index === index) return null;
+        if (prev.index > index) {
+          return { ...prev, index: prev.index - 1 };
+        }
+        return prev;
+      });
+      setOpenRefineMenuIndex((prev) => {
+        if (prev === null) return prev;
+        if (prev === index) return null;
+        if (prev > index) return prev - 1;
+        return prev;
+      });
+      setDeletingCardIndex(null);
+      setDeletingCardHeight(0);
+      deleteCardTimer.current = null;
+      toast.info("Karte entfernt", "Die Frage wurde aus dem Lernset entfernt.");
+    }, CARD_DELETE_ANIMATION_MS);
   };
 
   const requestRefinedCard = async (
     card: CardDraft,
     action: RefineAction
   ): Promise<{ card?: CardDraft; error?: ApiErrorState }> => {
-    const response = await fetch("/api/ai/refine-card", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        question: card.question.trim(),
-        answer: card.answer.trim(),
-        action,
-        title,
-        style: styleFromLearningGoal(learningGoal),
-        difficulty,
-        topicFocus,
-      }),
-    });
+    try {
+      const response = await fetch("/api/ai/refine-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: card.question.trim(),
+          answer: card.answer.trim(),
+          action,
+          title,
+          style: styleFromLearningGoal(learningGoal),
+          difficulty,
+          topicFocus,
+        }),
+      });
 
-    if (!response.ok) {
-      const parsed = await parseApiError(response, "Die Verfeinerung ist fehlgeschlagen.");
-      return { error: parsed };
-    }
+      if (!response.ok) {
+        const parsed = await parseApiError(response, "Die Verfeinerung ist fehlgeschlagen.");
+        return { error: parsed };
+      }
 
-    const payload = (await response.json()) as { card?: CardDraft };
-    if (!payload.card) {
+      const payload = (await response.json()) as { card?: CardDraft };
+      if (!payload.card) {
+        return {
+          error: {
+            message: "Die Verfeinerung hat kein gültiges Ergebnis geliefert.",
+            retryable: true,
+          },
+        };
+      }
+
+      return {
+        card: {
+          question: String(payload.card.question ?? "").trim(),
+          answer: String(payload.card.answer ?? "").trim(),
+        },
+      };
+    } catch {
       return {
         error: {
-          message: "Die Verfeinerung hat kein gültiges Ergebnis geliefert.",
+          message: "Unerwarteter Fehler bei der Verfeinerung. Bitte erneut versuchen.",
           retryable: true,
         },
       };
     }
-
-    return {
-      card: {
-        question: String(payload.card.question ?? "").trim(),
-        answer: String(payload.card.answer ?? "").trim(),
-      },
-    };
   };
 
   const handleRefineCard = async (index: number, action: RefineAction) => {
@@ -879,23 +1095,19 @@ export default function CreateDeckPage(): JSX.Element {
     const question = card.question.trim();
     const answer = card.answer.trim();
     if (!question || !answer) {
-      setActionError(
-        {
-          message: "Bitte zuerst Frage und Antwort ausfüllen, dann kann die Antwort verfeinert werden.",
-          retryable: false,
-        },
-        undefined
+      toast.info(
+        "Inhalt fehlt",
+        "Bitte zuerst Frage und Antwort ausfüllen, dann kann die Antwort verfeinert werden."
       );
       return;
     }
 
     setRefineLoading({ index, action });
-    setActionError(null);
 
     try {
       const result = await requestRefinedCard(card, action);
       if (result.error) {
-        setActionError(result.error, undefined);
+        showApiErrorToast(result.error, "Verfeinerung fehlgeschlagen");
         return;
       }
 
@@ -914,6 +1126,23 @@ export default function CreateDeckPage(): JSX.Element {
         )
       );
 
+      const refinedCardElement = cardElementRefs.current[index];
+      if (refinedCardElement) {
+        refinedCardElement.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+
+      if (refinedHighlightTimer.current !== null) {
+        window.clearTimeout(refinedHighlightTimer.current);
+      }
+      setCardFeedback({ index, type: "success" });
+      refinedHighlightTimer.current = window.setTimeout(() => {
+        setCardFeedback(null);
+        refinedHighlightTimer.current = null;
+      }, CARD_FEEDBACK_HIGHLIGHT_MS);
+      toast.success("Karte verbessert", "Die ausgewählte Karte wurde aktualisiert.");
       trackEvent("card_refined", { action });
     } finally {
       setRefineLoading(null);
@@ -921,7 +1150,6 @@ export default function CreateDeckPage(): JSX.Element {
   };
 
   const handleSave = async () => {
-    setActionError(null);
     setIsSaving(true);
 
     try {
@@ -933,20 +1161,16 @@ export default function CreateDeckPage(): JSX.Element {
         .filter((card) => card.question && card.answer);
 
       if (cleaned.length === 0) {
-        setActionError(
-          {
-            message: "Bitte mindestens eine Frage mit Antwort anlegen.",
-            retryable: false,
-          },
-          undefined
-        );
+        toast.info("Keine Karten", "Bitte mindestens eine Frage mit Antwort anlegen.");
         return;
       }
 
       const finalTitle = title.trim() || fileName.replace(/\.[^.]+$/, "") || "Lernset";
 
       if (!user) {
+        toast.info("Login erforderlich", "Zum Speichern bitte kurz anmelden.");
         saveLoginDraft({ title: finalTitle, cards: cleaned });
+        allowNavigationRef.current = true;
         router.push("/auth/sign-in?callbackUrl=/app/create");
         return;
       }
@@ -962,18 +1186,23 @@ export default function CreateDeckPage(): JSX.Element {
 
       if (!response.ok) {
         if (response.status === 401) {
+          toast.info("Login erforderlich", "Zum Speichern bitte kurz anmelden.");
           saveLoginDraft({ title: finalTitle, cards: cleaned });
+          allowNavigationRef.current = true;
           router.push("/auth/sign-in?callbackUrl=/app/create");
           return;
         }
 
         const parsed = await parseApiError(response, "Speichern fehlgeschlagen.");
-        setActionError(parsed, "save");
+        showApiErrorToast(parsed, "Speichern fehlgeschlagen");
         return;
       }
 
       clearLoginDraft();
       clearWorkingDraft();
+      void clearHeroUpload().catch(() => {
+        // Ignore cache cleanup failures.
+      });
       const payload = (await response.json()) as { deckId?: string };
       const nextDeckId = String(payload.deckId ?? "").trim();
 
@@ -986,35 +1215,24 @@ export default function CreateDeckPage(): JSX.Element {
         ? `/app/learn?saved=1&newDeck=${encodeURIComponent(nextDeckId)}`
         : "/app/learn?saved=1";
       navigateToLearnAfterSave(target);
+    } catch {
+      toast.error("Speichern fehlgeschlagen", "Unerwarteter Fehler beim Speichern. Bitte erneut versuchen.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleRetry = async () => {
-    if (!error?.action) return;
-    if (error.action === "derive") {
-      await handlePrepare();
-      return;
-    }
-    if (error.action === "generate") {
-      await handleGenerate();
-      return;
-    }
-    if (error.action === "regenerate") {
-      await handleRegenerate();
-      return;
-    }
-    if (error.action === "save") {
-      await handleSave();
-    }
-  };
-
   useEffect(() => {
-    if (forceNewFlow) return;
+    if (forceNewFlow) {
+      setIsDraftHydrated(true);
+      return;
+    }
 
     const cached = loadWorkingDraft();
-    if (!cached) return;
+    if (!cached) {
+      setIsDraftHydrated(true);
+      return;
+    }
 
     if (cached.title) setTitle(cached.title);
     if (cached.cards.length > 0) setCards(cached.cards);
@@ -1033,6 +1251,7 @@ export default function CreateDeckPage(): JSX.Element {
     } else if (cached.fileName) {
       setActiveStep(1);
     }
+    setIsDraftHydrated(true);
   }, [forceNewFlow]);
 
   useEffect(() => {
@@ -1049,7 +1268,6 @@ export default function CreateDeckPage(): JSX.Element {
     setDetectedTopics([]);
     setTopicFocus("");
     setFocusOpen(false);
-    setError(null);
     setActiveStep(1);
     setTitle("");
     setLearningGoal("verstehen");
@@ -1121,7 +1339,7 @@ export default function CreateDeckPage(): JSX.Element {
   ]);
 
   useEffect(() => {
-    if (file) return;
+    if (file || !isDraftHydrated) return;
 
     let active = true;
     const fetchUpload = async () => {
@@ -1131,17 +1349,27 @@ export default function CreateDeckPage(): JSX.Element {
         return;
       }
 
+      if (!analysisReady && !fileName.trim()) return;
       const uploaded = await loadHeroUpload();
       if (!active || !uploaded) return;
-      consumeFile(uploaded);
-      await clearHeroUpload();
+      if (fileName && uploaded.name !== fileName) return;
+
+      if (analysisReady) {
+        setFile(uploaded);
+        if (!fileName) {
+          setFileName(uploaded.name);
+        }
+        return;
+      }
+
+      consumeFile(uploaded, { persist: false });
     };
 
     void fetchUpload();
     return () => {
       active = false;
     };
-  }, [file]);
+  }, [file, isDraftHydrated, analysisReady, fileName]);
 
   useEffect(() => {
     if (!user || autoSaveTriggered.current) return;
@@ -1161,7 +1389,6 @@ export default function CreateDeckPage(): JSX.Element {
 
     const autoSave = async () => {
       setIsSaving(true);
-      setActionError(null);
 
       try {
         const response = await fetch("/api/ai/save", {
@@ -1175,18 +1402,23 @@ export default function CreateDeckPage(): JSX.Element {
 
         if (!response.ok) {
           const parsed = await parseApiError(response, "Speichern fehlgeschlagen.");
-          setActionError(parsed, "save");
+          showApiErrorToast(parsed, "Speichern fehlgeschlagen");
           return;
         }
 
         clearLoginDraft();
         clearWorkingDraft();
+        void clearHeroUpload().catch(() => {
+          // Ignore cache cleanup failures.
+        });
         const payload = (await response.json()) as { deckId?: string };
         const nextDeckId = String(payload.deckId ?? "").trim();
         const target = nextDeckId
           ? `/app/learn?saved=1&newDeck=${encodeURIComponent(nextDeckId)}`
           : "/app/learn?saved=1";
         navigateToLearnAfterSave(target);
+      } catch {
+        toast.error("Speichern fehlgeschlagen", "Unerwarteter Fehler beim Speichern. Bitte erneut versuchen.");
       } finally {
         setIsSaving(false);
       }
@@ -1202,6 +1434,77 @@ export default function CreateDeckPage(): JSX.Element {
   useEffect(() => {
     router.prefetch("/app/learn");
   }, [router]);
+
+  useEffect(() => {
+    for (const src of CREATE_LOADER_VIDEO_SOURCES) {
+      const selector = `link[rel=\"preload\"][as=\"video\"][href=\"${src}\"]`;
+      if (document.head.querySelector(selector)) continue;
+      const link = document.createElement("link");
+      link.rel = "preload";
+      link.as = "video";
+      link.href = src;
+      link.type = "video/webm";
+      document.head.appendChild(link);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (!hasUnsavedCreateDraft || allowNavigationRef.current) return;
+      if (showLeaveConfirmModal) return;
+      if (event.defaultPrevented) return;
+      if (event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+      const target = event.target as Element | null;
+      const anchor = target?.closest("a[href]") as HTMLAnchorElement | null;
+      if (!anchor) return;
+      if (anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+
+      const hrefAttr = anchor.getAttribute("href");
+      if (!hrefAttr) return;
+      if (hrefAttr.startsWith("#")) return;
+
+      const nextUrl = new URL(anchor.href, window.location.href);
+      const currentUrl = new URL(window.location.href);
+
+      const isSameLocation =
+        nextUrl.origin === currentUrl.origin &&
+        nextUrl.pathname === currentUrl.pathname &&
+        nextUrl.search === currentUrl.search &&
+        nextUrl.hash === currentUrl.hash;
+
+      if (isSameLocation) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingLeaveHref(nextUrl.toString());
+      setShowLeaveConfirmModal(true);
+    };
+
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick, true);
+    };
+  }, [hasUnsavedCreateDraft, showLeaveConfirmModal]);
+
+  const handleCancelLeave = () => {
+    setShowLeaveConfirmModal(false);
+    setPendingLeaveHref(null);
+  };
+
+  const handleConfirmLeave = () => {
+    if (!pendingLeaveHref) {
+      setShowLeaveConfirmModal(false);
+      return;
+    }
+
+    allowNavigationRef.current = true;
+    const target = pendingLeaveHref;
+    setShowLeaveConfirmModal(false);
+    setPendingLeaveHref(null);
+    window.location.assign(target);
+  };
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -1240,18 +1543,56 @@ export default function CreateDeckPage(): JSX.Element {
       if (redirectFallbackTimer.current !== null) {
         window.clearTimeout(redirectFallbackTimer.current);
       }
+      if (refinedHighlightTimer.current !== null) {
+        window.clearTimeout(refinedHighlightTimer.current);
+      }
+      if (deleteCardTimer.current !== null) {
+        window.clearTimeout(deleteCardTimer.current);
+      }
     };
   }, []);
 
   return (
     <main className="relative py-8">
-      {loaderOpen && (
+      {(loaderOpen || isSaving) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-3xl border border-border bg-card px-6 py-6 text-center shadow-sm">
             <p className="text-base font-semibold text-foreground">{activeProcessingLabel}</p>
-            <p className="mt-1 text-sm text-muted-foreground">Bitte kurz warten…</p>
             <div className="mt-4 flex justify-center">
-              <span className="h-5 w-5 rounded-full border-2 border-border border-t-foreground animate-spin" />
+              <video
+                key={loaderVideoSrc}
+                className="h-[9rem] w-[9rem] object-contain"
+                autoPlay
+                loop
+                muted
+                playsInline
+                preload="auto"
+              >
+                <source src={loaderVideoSrc} type="video/webm" />
+              </video>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">Bitte kurz warten…</p>
+          </div>
+        </div>
+      )}
+      {showLeaveConfirmModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/25 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-lg">
+            <h3 className="text-base font-semibold text-foreground">Änderungen verwerfen?</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Dein Lernset ist noch nicht gespeichert. Möchtest du die Seite wirklich verlassen?
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <Button variant="outline" onClick={handleCancelLeave} className="w-full whitespace-normal">
+                Auf der Seite bleiben
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmLeave}
+                className="w-full whitespace-normal text-background hover:text-background"
+              >
+                Ohne Speichern verlassen
+              </Button>
             </div>
           </div>
         </div>
@@ -1261,7 +1602,7 @@ export default function CreateDeckPage(): JSX.Element {
           <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-lg">
             <h3 className="text-base font-semibold text-foreground">Mehr Fragen mit Premium</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Mit Premium kannst du 11 bis 25 Fragen pro Lernset generieren.
+              Mit Premium kannst du mehr als 10 Fragen pro Lernset generieren.
             </p>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button variant="outline" onClick={() => setShowPremiumModal(false)}>
@@ -1282,106 +1623,68 @@ export default function CreateDeckPage(): JSX.Element {
           <StepSection
             id={1}
             title="Datei auswählen"
+            subtitle={step1Summary}
             active={activeStep === 1}
             complete={isStep1Complete}
             disabled={activeStep > 1}
             onOpen={() => activeStep === 1 && goToStep(1)}
           >
-            {!fileName ? (
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => fileInputRef.current?.click()}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.preventDefault();
-                  fileInputRef.current?.click();
-                }}
-                onDragEnter={(event) => {
-                  event.preventDefault();
-                  if (!event.dataTransfer.types.includes("Files")) return;
-                  dragCounter.current += 1;
-                  setIsDragging(true);
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  if (!event.dataTransfer.types.includes("Files")) return;
-                  event.dataTransfer.dropEffect = "copy";
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => {
-                  dragCounter.current = Math.max(0, dragCounter.current - 1);
-                  if (dragCounter.current === 0) setIsDragging(false);
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  dragCounter.current = 0;
-                  setIsDragging(false);
-                  consumeFile(event.dataTransfer.files?.[0] ?? null);
-                }}
-                className={`group flex w-full min-h-[136px] cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border border-dashed px-6 py-5 text-center transition-all duration-150 ${
-                  isDragging
-                    ? "scale-[1.01] border-primary/80 bg-background shadow-[0_0_0_2px_color-mix(in_srgb,var(--primary)_25%,transparent)]"
-                    : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-background"
-                }`}
-                style={{ borderStyle: isDragging ? "solid" : undefined }}
-              >
-                <div className="mb-1 inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/70 bg-background">
-                  <ArrowUpTrayIcon className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <span className="text-base font-semibold text-foreground">Datei hochladen</span>
-                <span className="text-xs text-muted-foreground">Per Drag &amp; Drop oder Klick auswählen</span>
-                <span className="mt-1 text-[11px] text-muted-foreground">PDF, TXT, MD</span>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                if (!event.dataTransfer.types.includes("Files")) return;
+                dragCounter.current += 1;
+                setIsDragging(true);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                if (!event.dataTransfer.types.includes("Files")) return;
+                event.dataTransfer.dropEffect = "copy";
+                setIsDragging(true);
+              }}
+              onDragLeave={() => {
+                dragCounter.current = Math.max(0, dragCounter.current - 1);
+                if (dragCounter.current === 0) setIsDragging(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                dragCounter.current = 0;
+                setIsDragging(false);
+                consumeFile(event.dataTransfer.files?.[0] ?? null);
+              }}
+              className={`group flex w-full min-h-[136px] cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border border-dashed px-6 py-5 text-center transition-all duration-150 ${
+                isDragging
+                  ? "scale-[1.01] border-primary/80 bg-background shadow-[0_0_0_2px_color-mix(in_srgb,var(--primary)_25%,transparent)]"
+                  : "border-border/70 bg-background/70 hover:border-primary/50 hover:bg-background"
+              }`}
+              style={{ borderStyle: isDragging ? "solid" : undefined }}
+            >
+              <div className="mb-1 inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/70 bg-background">
+                <ArrowUpTrayIcon className="h-5 w-5 text-muted-foreground" />
               </div>
-            ) : (
-              <div className="flex flex-col gap-2 rounded-xl border border-border bg-background px-4 py-3 md:flex-row md:items-center md:justify-between">
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground">Datei</p>
-                  <p className="text-sm font-semibold text-foreground">{fileName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Größe: {file ? formatFileSize(file.size) : "nicht verfügbar"}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="h-9 w-9 px-0 md:h-10 md:w-auto md:px-4"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <ArrowsRightLeftIcon className="h-4 w-4" />
-                    <span className="hidden md:inline">Datei wechseln</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-9 w-9 md:h-10 md:w-10"
-                    onClick={() => resetFlowForNewFile(null)}
-                  >
-                    <TrashIcon className="h-4 w-4" />
-                    <span className="sr-only">Datei entfernen</span>
-                  </Button>
-                </div>
-              </div>
-            )}
+              <span className="text-base font-semibold text-foreground">Datei hochladen</span>
+              <span className="text-xs text-muted-foreground">Per Drag &amp; Drop oder Klick auswählen</span>
+              <span className="mt-1 text-[11px] text-muted-foreground">PDF, TXT, MD</span>
+            </div>
 
             <input
               ref={fileInputRef}
               type="file"
               accept=".pdf,.txt,.md"
               className="hidden"
-              onChange={(event) => consumeFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                consumeFile(event.target.files?.[0] ?? null);
+                event.currentTarget.value = "";
+              }}
             />
-
-            {activeStep === 1 && file && (
-              <LoadingButton
-                className="w-full md:w-auto"
-                onClick={handlePrepare}
-                disabled={!file || isDeriving}
-                isLoading={isDeriving}
-                loadingText="Analysiere"
-                text="Unterlagen verwenden"
-              />
-            )}
           </StepSection>
         </div>
 
@@ -1400,10 +1703,17 @@ export default function CreateDeckPage(): JSX.Element {
                 <label className="text-sm font-semibold text-muted-foreground">Titel</label>
                 <input
                   value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm shadow-sm placeholder:text-muted-foreground focus:border-foreground/20 focus:outline-none"
+                  onChange={(event) => handleTitleChange(event.target.value)}
+                  className={`w-full rounded-xl border bg-background px-4 py-3 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none ${
+                    isTitleMissing
+                      ? "border-destructive focus:border-destructive"
+                      : "border-border focus:border-foreground/20"
+                  }`}
                   placeholder="Lernset-Titel"
                 />
+                {isTitleMissing && (
+                  <p className="text-xs text-destructive">Bitte einen Titel festlegen.</p>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -1464,8 +1774,16 @@ export default function CreateDeckPage(): JSX.Element {
                       value={questionCountInput}
                       onChange={(event) => handleQuestionCountInputChange(event.target.value)}
                       onBlur={handleQuestionCountInputBlur}
-                      className="h-8 w-14 rounded-md border border-border bg-background px-2 text-center text-sm font-semibold text-foreground focus:border-foreground/20 focus:outline-none"
+                      onPointerDown={handleQuestionCountScrubStart}
+                      onPointerMove={handleQuestionCountScrubMove}
+                      onPointerUp={stopQuestionCountScrub}
+                      onPointerCancel={stopQuestionCountScrub}
+                      onLostPointerCapture={stopQuestionCountScrub}
+                      className={`h-8 w-14 rounded-md border border-border bg-background px-2 text-center text-sm font-semibold text-foreground focus:border-foreground/20 focus:outline-none ${
+                        isScrubbingQuestionCount ? "cursor-grabbing select-none" : "cursor-ew-resize"
+                      }`}
                       aria-label="Fragenanzahl eingeben"
+                      title="Tippen oder horizontal ziehen"
                     />
                     <span className="text-sm font-semibold text-foreground">Fragen</span>
                     {questionCount > FREE_PLAN_QUESTION_LIMIT && (
@@ -1518,7 +1836,7 @@ export default function CreateDeckPage(): JSX.Element {
                   onToggle={(event) => setFocusOpen(event.currentTarget.open)}
                 >
                   <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-foreground">
-                    <span>Erweiterte Optionen</span>
+                    <span className="text-muted-foreground">Erweiterte Optionen</span>
                     <ChevronDownIcon
                       className={`h-4 w-4 transition-transform ${focusOpen ? "rotate-180" : ""}`}
                     />
@@ -1542,7 +1860,7 @@ export default function CreateDeckPage(): JSX.Element {
               <LoadingButton
                 className="mt-8 w-full min-w-[300px] md:w-auto"
                 onClick={handleGenerate}
-                disabled={!canGenerate}
+                disabled={isGenerating || isDeriving || isTitleMissing}
                 isLoading={isGenerating}
                 loadingText="Generiere Fragen"
                 text="Fragen generieren"
@@ -1565,21 +1883,55 @@ export default function CreateDeckPage(): JSX.Element {
               <p className="text-sm text-muted-foreground">{cards.length} Karten</p>
             </div>
 
-            <div className="space-y-7">
+            <div className="flex flex-col">
               {cards.map((card, index) => {
                 const isRefining = refineLoading?.index === index;
+                const isDeleting = deletingCardIndex === index;
+                const cardFeedbackType = cardFeedback?.index === index ? cardFeedback.type : null;
+                const feedbackColorVar =
+                  cardFeedbackType === "error" ? "var(--color-error)" : "var(--color-success)";
                 return (
                   <div
                     key={index}
-                    className="space-y-3 rounded-2xl border border-border bg-background/80 p-3 md:p-4"
+                    ref={(element) => {
+                      cardElementRefs.current[index] = element;
+                    }}
+                    data-create-card="true"
+                    className={`mb-8 space-y-5 rounded-2xl border bg-card/95 p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_6px_16px_rgba(0,0,0,0.14)] transition-all duration-300 last:mb-0 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_8px_20px_rgba(0,0,0,0.16)] md:p-5 dark:bg-[color-mix(in_srgb,var(--card)_90%,var(--muted)_10%)] ${
+                      cardFeedbackType
+                        ? ""
+                        : "border-border"
+                    } ${isDeleting ? "isDeleting pointer-events-none" : ""}`}
+                    style={{
+                      ...(cardFeedbackType
+                        ? {
+                            backgroundColor: `color-mix(in srgb, ${feedbackColorVar} 14%, var(--color-card))`,
+                            borderColor: `color-mix(in srgb, ${feedbackColorVar} 30%, var(--color-border))`,
+                            boxShadow:
+                              `0 0 0 2px color-mix(in srgb, ${feedbackColorVar} 45%, transparent), 0 10px 24px rgba(0,0,0,0.16)`,
+                          }
+                        : {}),
+                      ...(isDeleting
+                        ? {
+                            ["--delete-start-height" as string]: `${Math.max(deletingCardHeight, 1)}px`,
+                          }
+                        : {}),
+                    }}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground">Karte {index + 1}</p>
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border text-xs font-medium text-muted-foreground">
+                        {index + 1}
+                      </span>
                       <div className="flex items-center gap-2">
                         {isRefining ||
                         !card.question.trim() ||
                         !card.answer.trim() ? (
-                          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" disabled>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 border-white/10 bg-muted/40 text-xs text-foreground hover:bg-muted/55 dark:border-white/10 dark:bg-[color-mix(in_srgb,var(--muted)_65%,transparent)] dark:hover:bg-[color-mix(in_srgb,var(--muted)_78%,transparent)]"
+                            disabled
+                          >
                             <SparklesIcon className="h-4 w-4" />
                             {isRefining ? "Verbessere…" : "Verbessern"}
                             <ChevronDownIcon className="h-3.5 w-3.5" />
@@ -1591,7 +1943,7 @@ export default function CreateDeckPage(): JSX.Element {
                               onClick={() =>
                                 setOpenRefineMenuIndex((prev) => (prev === index ? null : index))
                               }
-                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition hover:bg-accent"
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-muted/40 px-3 text-xs font-medium text-foreground transition hover:bg-muted/55 dark:border-white/10 dark:bg-[color-mix(in_srgb,var(--muted)_65%,transparent)] dark:hover:bg-[color-mix(in_srgb,var(--muted)_78%,transparent)]"
                             >
                               <SparklesIcon className="h-4 w-4" />
                               Verbessern
@@ -1620,9 +1972,9 @@ export default function CreateDeckPage(): JSX.Element {
                         <Button
                           variant="outline"
                           size="icon"
-                          className="h-8 w-8 border-border bg-background text-foreground hover:bg-accent"
+                          className="h-8 w-8 border-white/10 bg-muted/35 text-muted-foreground hover:bg-muted/55 hover:text-foreground dark:border-white/10 dark:bg-[color-mix(in_srgb,var(--muted)_58%,transparent)] dark:hover:bg-[color-mix(in_srgb,var(--muted)_72%,transparent)]"
                           onClick={() => handleRemoveCard(index)}
-                          disabled={isRefining}
+                          disabled={isRefining || deletingCardIndex !== null}
                         >
                           <TrashIcon className="h-4 w-4" />
                           <span className="sr-only">Karte entfernen</span>
@@ -1630,29 +1982,31 @@ export default function CreateDeckPage(): JSX.Element {
                       </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                        Frage
-                      </label>
-                      <input
-                        value={card.question}
-                        onChange={(event) => handleUpdateCard(index, "question", event.target.value)}
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground/20 focus:outline-none"
-                        placeholder="Frage eingeben"
-                      />
-                    </div>
+                    <div className="space-y-6">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-medium text-muted-foreground/85">
+                          Frage
+                        </label>
+                        <input
+                          value={card.question}
+                          onChange={(event) => handleUpdateCard(index, "question", event.target.value)}
+                          className="w-full rounded-xl border border-white/10 bg-transparent px-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none sm:text-sm"
+                          placeholder="Frage eingeben"
+                        />
+                      </div>
 
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                        Antwort
-                      </label>
-                      <Textarea
-                        rows={3}
-                        value={card.answer}
-                        onChange={(event) => handleUpdateCard(index, "answer", event.target.value)}
-                        className="min-h-[96px] resize-y rounded-lg"
-                        placeholder="Antwort eingeben"
-                      />
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-medium text-muted-foreground/85">
+                          Antwort
+                        </label>
+                        <Textarea
+                          rows={3}
+                          value={card.answer}
+                          onChange={(event) => handleUpdateCard(index, "answer", event.target.value)}
+                          className="min-h-[96px] resize-y rounded-xl border-white/10 !bg-transparent text-xs transition-colors focus:border-primary sm:text-sm"
+                          placeholder="Antwort eingeben"
+                        />
+                      </div>
                     </div>
                   </div>
                 );
@@ -1660,21 +2014,25 @@ export default function CreateDeckPage(): JSX.Element {
             </div>
 
             <div className="flex items-center justify-between gap-3">
-              <Button variant="outline" size="sm" onClick={handleAddCard}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/10 bg-muted/35 hover:bg-muted/55 dark:border-white/10 dark:bg-[color-mix(in_srgb,var(--muted)_58%,transparent)] dark:hover:bg-[color-mix(in_srgb,var(--muted)_72%,transparent)]"
+                onClick={handleAddCard}
+                disabled={isAtMaxCardCount || deletingCardIndex !== null}
+              >
                 Karte hinzufügen
               </Button>
             </div>
 
-            <div className="pt-2">
-              <LoadingButton
-                className="w-full"
-                onClick={handleSave}
-                disabled={isSaving}
-                isLoading={isSaving}
-                loadingText="Speichere"
-                text="Lernset speichern"
-              />
-            </div>
+            <LoadingButton
+              className="mt-8 w-full min-w-[300px] md:w-auto"
+              onClick={handleSave}
+              disabled={isSaving}
+              isLoading={isSaving}
+              loadingText="Speichere"
+              text="Lernset speichern"
+            />
             {!user && (
               <p className="text-sm text-muted-foreground">
                 Zum Speichern wird ein kostenloser Account benötigt.
@@ -1683,20 +2041,6 @@ export default function CreateDeckPage(): JSX.Element {
           </StepSection>
         </div>
 
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <span>{error.message}</span>
-                {error.retryable && error.action && (
-                  <Button variant="outline" size="sm" onClick={handleRetry}>
-                    Erneut versuchen
-                  </Button>
-                )}
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
       </div>
     </main>
   );

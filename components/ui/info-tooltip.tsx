@@ -35,6 +35,16 @@ export function InfoTooltip({
     placement === "bottom-left"
       ? "absolute -top-1.5 right-4 h-3 w-3 rotate-45"
       : "absolute -bottom-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45";
+  const arrowBorderStyle =
+    placement === "bottom-left"
+      ? {
+          borderTop: "1px solid color-mix(in srgb, var(--color-info) 30%, var(--color-border))",
+          borderRight: "1px solid color-mix(in srgb, var(--color-info) 30%, var(--color-border))",
+        }
+      : {
+          borderBottom: "1px solid color-mix(in srgb, var(--color-info) 30%, var(--color-border))",
+          borderRight: "1px solid color-mix(in srgb, var(--color-info) 30%, var(--color-border))",
+        };
 
   return (
     <div className={`relative inline-block group/info ${className ?? ""}`}>
@@ -69,14 +79,13 @@ export function InfoTooltip({
           positionClassName ?? ""
         }`}
       >
-        <div
-          className="relative"
-          style={{ filter: "drop-shadow(0 0 10px var(--background))" }}
-        >
+        <div className="relative">
           <div
-            className={`relative rounded-2xl px-4 py-3 whitespace-nowrap ${contentClassName ?? ""}`}
+            className={`relative whitespace-nowrap rounded-[10px] border px-4 py-3 ${contentClassName ?? ""}`}
             style={{
-              background: "var(--info)",
+              backgroundColor: "color-mix(in srgb, var(--color-info) 14%, var(--color-card))",
+              borderColor: "color-mix(in srgb, var(--color-info) 30%, var(--color-border))",
+              boxShadow: "0 8px 20px var(--color-toast-shadow)",
             }}
           >
           <div className="space-y-0.5">
@@ -94,12 +103,15 @@ export function InfoTooltip({
             )}
           </div>
 
-          <div
-            className="absolute inset-0 rounded-2xl opacity-0"
-            style={{ background: "transparent" }}
-          />
+          <div className="absolute inset-0 rounded-[10px] opacity-0" style={{ background: "transparent" }} />
         </div>
-          <div className={arrowClass} style={{ background: "var(--info)" }} />
+          <div
+            className={arrowClass}
+            style={{
+              backgroundColor: "color-mix(in srgb, var(--color-info) 14%, var(--color-card))",
+              ...arrowBorderStyle,
+            }}
+          />
         </div>
       </div>
     </div>

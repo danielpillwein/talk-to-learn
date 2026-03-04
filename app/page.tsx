@@ -247,9 +247,10 @@ export default function LandingPage(): JSX.Element {
               <Image
                 src="/mascot/otter-hero-section.png"
                 alt="Otter-Illustration für den Hero-Bereich"
-                width={800}
-                height={600}
-                sizes="(max-width: 1024px) 100vw, 30vw"
+                width={2528}
+                height={1696}
+                sizes="(max-width: 767px) calc(100vw - 3rem), 360px"
+                quality={95}
                 className="h-full w-full object-cover"
                 priority
               />

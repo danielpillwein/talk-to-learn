@@ -440,7 +440,7 @@ function buildTitleContext(text: string, topics: string[]) {
 function sanitizeAiTitle(input: string): string {
   const cleaned = normalizeTitleCandidate(String(input ?? ""));
   if (!cleaned) return "";
-  return cleaned.slice(0, 90);
+  return cleaned.slice(0, 45);
 }
 
 export async function deriveGenerationParamsWithAiTitle(input: {

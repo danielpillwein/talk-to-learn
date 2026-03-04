@@ -36,6 +36,13 @@
     --chart-4: #f2756c;
     --chart-5: #b3ccb8;
     --info: #3aa3c5;
+    --color-success: var(--success);
+    --color-error: var(--destructive);
+    --color-info: var(--info);
+    --color-card: var(--card);
+    --color-border: var(--border);
+    --color-text: var(--foreground);
+    --color-toast-shadow: rgba(0, 0, 0, 0.25);
 
     --font-size-sm: 0.875rem;
     --line-height-sm: 1.4;
@@ -240,6 +247,29 @@ section[id] {
   background-size: 12px 12px;
   background-position: left top, left bottom, right top, right bottom;
   animation: session-rotate 1s linear infinite;
+}
+
+[data-create-card].isDeleting {
+  overflow: hidden;
+  max-height: var(--delete-start-height, 0px);
+  opacity: 0;
+  transform: none;
+  transform-origin: top center;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border-top-width: 0;
+  border-bottom-width: 0;
+  transition:
+    opacity 220ms ease-in-out,
+    max-height 220ms ease-in-out,
+    margin-top 220ms ease-in-out,
+    margin-bottom 220ms ease-in-out,
+    padding-top 220ms ease-in-out,
+    padding-bottom 220ms ease-in-out,
+    border-top-width 220ms ease-in-out,
+    border-bottom-width 220ms ease-in-out;
 }
 
 @keyframes session-rotate {
