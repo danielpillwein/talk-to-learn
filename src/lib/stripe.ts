@@ -9,6 +9,5 @@ if (!stripeSecretKey) {
 }
 
 export const stripe = new Stripe(stripeSecretKey || "sk_test_disabled", {
-  apiVersion: "2024-04-10",
+  apiVersion: "2024-06-20",
 });
-
