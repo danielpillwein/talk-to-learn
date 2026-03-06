@@ -41,7 +41,7 @@ export function InfoTooltip({
     placement === "bottom-left"
       ? {
           borderTop: "1px solid color-mix(in srgb, var(--color-info) 30%, var(--color-border))",
-          borderRight: "1px solid color-mix(in srgb, var(--color-info) 30%, var(--color-border))",
+          borderLeft: "1px solid color-mix(in srgb, var(--color-info) 30%, var(--color-border))",
         }
       : {
           borderBottom: "1px solid color-mix(in srgb, var(--color-info) 30%, var(--color-border))",

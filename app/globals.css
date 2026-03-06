@@ -42,6 +42,7 @@
     --color-card: var(--card);
     --color-border: var(--border);
     --color-accent: var(--primary);
+    --color-accent-rgb: 255, 190, 10;
     --color-accent-dark: var(--secondary);
     --color-danger: var(--danger);
     --color-text: var(--foreground);
@@ -100,6 +101,7 @@
     --chart-5: #334d38;
     --info: #3aa3c5;
     --color-accent: var(--primary);
+    --color-accent-rgb: 245, 180, 0;
     --color-accent-dark: var(--secondary);
     --color-danger: var(--danger);
   }

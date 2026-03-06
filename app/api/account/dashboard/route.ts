@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PLAN_LIMITS, normalizePlan, type PlanTier, type SubscriptionStatus } from "@/lib/account-plans";
-import { getStripeSubscriptionSnapshot } from "@/lib/stripe-server";
+import { getStripeSubscriptionSnapshot, type StripeBillingInterval } from "@/lib/stripe-server";
 import { getSpeechUsageSeconds, resolveDateKeyFromOffset } from "@/lib/speech-usage";
 
 type DashboardPayload = {
@@ -10,6 +10,7 @@ type DashboardPayload = {
   status: SubscriptionStatus;
   currentPeriodEnd: string | null;
   nextBillingAt: string | null;
+  billingInterval: StripeBillingInterval;
   canManageSubscription: boolean;
   limits: {
     deckLimit: number | "unlimited";
@@ -60,6 +61,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     let status: SubscriptionStatus = "active";
     let currentPeriodEnd: string | null = null;
     let nextBillingAt: string | null = null;
+    let billingInterval: StripeBillingInterval = null;
     let canManageSubscription = false;
 
     if (user.email) {
@@ -70,6 +72,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           status = snapshot.status;
           currentPeriodEnd = snapshot.currentPeriodEnd;
           nextBillingAt = snapshot.nextBillingAt;
+          billingInterval = snapshot.billingInterval;
           canManageSubscription = plan !== "free";
         }
       } catch (stripeError) {
@@ -82,6 +85,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       status,
       currentPeriodEnd,
       nextBillingAt,
+      billingInterval,
       canManageSubscription,
       limits: PLAN_LIMITS[plan],
       usage: {

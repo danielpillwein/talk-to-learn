@@ -10,7 +10,7 @@ export type PlanLimits = {
 };
 
 export const PLAN_LABELS: Record<PlanTier, string> = {
-  free: "Free",
+  free: "Kostenlos",
   premium: "Premium",
   ultimate: "Ultimate",
 };
@@ -24,12 +24,12 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   },
   premium: {
     questionsPerDeck: 25,
-    speechSecondsPerDay: 1500,
+    speechSecondsPerDay: 1800,
     deckLimit: "unlimited",
     aiRefine: true,
   },
   ultimate: {
-    questionsPerDeck: "unlimited",
+    questionsPerDeck: 50,
     speechSecondsPerDay: "unlimited",
     deckLimit: "unlimited",
     aiRefine: true,
@@ -53,4 +53,3 @@ export function getUsageProgressPercent(used: number, cap: LimitedValue): number
   if (cap <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round((used / cap) * 100)));
 }
-

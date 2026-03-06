@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { signOut } from "next-auth/react";
+import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
 import { LoadingButton } from "@/components/ui/loading-button";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { useToast } from "@/components/ui/toast/useToast";
 import { AvatarBadge } from "./parts";
 import {
@@ -20,6 +22,7 @@ type DashboardData = {
   status: SubscriptionStatus;
   currentPeriodEnd: string | null;
   nextBillingAt: string | null;
+  billingInterval: "monthly" | "yearly" | null;
   canManageSubscription: boolean;
   limits: {
     deckLimit: LimitedValue;
@@ -42,10 +45,12 @@ type DashboardClientProps = {
 type SectionId = "usage" | "abo" | "danger-zone";
 type UpgradeTarget = "premium" | "ultimate";
 type DangerActionKind = "reset_progress" | "delete_decks" | "delete_account";
+type BillingCycle = "monthly" | "yearly";
 
 type PendingAction =
   | { kind: "upgrade"; target: UpgradeTarget }
   | { kind: "portal" }
+  | { kind: "subscription_cancel" }
   | { kind: "danger"; action: DangerActionKind }
   | null;
 
@@ -59,9 +64,11 @@ type ModalCopy = {
 type PlanCardConfig = {
   tier: PlanTier;
   title: string;
-  price: string;
+  monthlyPrice: number;
   features: string[];
   highlighted?: boolean;
+  badge?: string;
+  note?: string;
 };
 
 function parseHashSection(hash: string): SectionId | null {
@@ -88,41 +95,54 @@ const PLAN_CARDS: PlanCardConfig[] = [
   {
     tier: "free",
     title: "Kostenlos",
-    price: "0 € / Monat",
+    monthlyPrice: 0,
     features: [
-      "3 Lernsets erstellen",
-      "max 10 Fragen pro Lernset",
-      "limitierte Sprachsekunden",
+      "3 Lernsets insgesamt",
+      "max. 10 Fragen pro Lernset",
+      "300 Sekunden Erklärungszeit pro Tag",
+      "AI Feedback auf deine Antworten",
     ],
   },
   {
     tier: "premium",
     title: "Premium",
-    price: "9 € / Monat",
+    monthlyPrice: 9,
     highlighted: true,
+    badge: "Beliebtester Plan",
     features: [
-      "mehr Lernset Creations",
-      "bis zu 25 Fragen pro Lernset",
+      "Unlimitierte Lernsets",
+      "Bis zu 25 Fragen pro Lernset",
+      "30 Minuten Erklärungszeit pro Tag",
+      "AI Feedback auf deine Antworten",
       "Fragen mit AI verbessern",
-      "mehr Sprachsekunden",
     ],
   },
   {
     tier: "ultimate",
     title: "Ultimate",
-    price: "15 € / Monat",
+    monthlyPrice: 15,
     features: [
-      "unlimitierte Lernsets",
-      "unlimitierte Fragen",
-      "unlimitierte Sprachsekunden",
-      "alle AI Features",
+      "Unlimitierte Lernsets",
+      "Bis zu 50 Fragen pro Lernset",
+      "Unlimitierte Erklärungszeit*",
+      "AI Feedback auf deine Antworten",
+      "Fragen mit AI verbessern",
+      "Priority AI Verarbeitung",
     ],
+    note: "*Fair Use Policy",
   },
 ];
 
 const MOBILE_TABS_TOP_OFFSET = 72;
 const MOBILE_TAB_BAR_FALLBACK_HEIGHT = 52;
 const MOBILE_SECTION_SCROLL_EXTRA = 10;
+
+function formatEuroPrice(value: number): string {
+  return new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
 
 function formatGermanDate(value: string | null): string | null {
   if (!value) return null;
@@ -149,11 +169,10 @@ function formatCountdownToMidnight(now: Date): string {
 }
 
 function progressForLimited(used: number, cap: LimitedValue): number {
-  if (cap === "unlimited") return 100;
   return getUsageProgressPercent(used, cap);
 }
 
-function getModalCopy(action: PendingAction): ModalCopy {
+function getModalCopy(action: PendingAction, options?: { nextBillingDate?: string | null }): ModalCopy {
   if (!action) {
     return {
       title: "Bist du sicher?",
@@ -178,6 +197,17 @@ function getModalCopy(action: PendingAction): ModalCopy {
       description: "Im Stripe Portal kannst du dein Abo verwalten oder kündigen.",
       confirmLabel: "Bestätigen",
       intent: "default",
+    };
+  }
+
+  if (action.kind === "subscription_cancel") {
+    const endDate = options?.nextBillingDate ?? "Ende der Laufzeit";
+    return {
+      title: "Abo kündigen",
+      description:
+        `Möchtest du dein Abo wirklich kündigen?\n\nDein Zugang bleibt bis zum ${endDate} aktiv.\n\nDanach wechselst du automatisch zum kostenlosen Plan.`,
+      confirmLabel: "Abo kündigen",
+      intent: "danger",
     };
   }
 
@@ -222,8 +252,10 @@ export function AccountDashboardClient({
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [isRunningDangerAction, setIsRunningDangerAction] = useState(false);
+  const [isUpdatingSubscription, setIsUpdatingSubscription] = useState(false);
   const [speechResetCountdown, setSpeechResetCountdown] = useState("00:00:00");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [isMobileTabsPinned, setIsMobileTabsPinned] = useState(false);
   const mobileTabsSentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -457,19 +489,59 @@ export function AccountDashboardClient({
     [loadDashboard, toast]
   );
 
+  const updateSubscriptionCancellation = useCallback(
+    async (action: "cancel" | "resume") => {
+      setIsUpdatingSubscription(true);
+      try {
+        const response = await fetch("/api/stripe/subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error || "Abo-Status konnte nicht aktualisiert werden.");
+        }
+
+        if (action === "cancel") {
+          toast.success("Abo gekündigt", "Dein Zugang bleibt bis zum Ende der Laufzeit aktiv.");
+          setPendingAction(null);
+        } else {
+          toast.success("Kündigung rückgängig gemacht", "Dein Abo läuft normal weiter.");
+        }
+
+        await loadDashboard();
+      } catch (error) {
+        toast.error(
+          "Aktion fehlgeschlagen",
+          error instanceof Error ? error.message : "Bitte später erneut versuchen."
+        );
+      } finally {
+        setIsUpdatingSubscription(false);
+      }
+    },
+    [loadDashboard, toast]
+  );
+
   const handleConfirmAction = async () => {
     if (!pendingAction) return;
 
     if (pendingAction.kind === "upgrade") {
       const target = pendingAction.target;
       setPendingAction(null);
-      window.location.assign(`/pricing?plan=${target}`);
+      window.location.assign(`/pricing?plan=${target}&billing=${billingCycle}`);
       return;
     }
 
     if (pendingAction.kind === "portal") {
       setPendingAction(null);
       await openBillingPortal();
+      return;
+    }
+
+    if (pendingAction.kind === "subscription_cancel") {
+      await updateSubscriptionCancellation("cancel");
       return;
     }
 
@@ -492,26 +564,34 @@ export function AccountDashboardClient({
   const status = dashboard?.status ?? "active";
   const statusDate = formatGermanDate(dashboard?.currentPeriodEnd ?? null);
   const nextBillingDate = formatGermanDate(dashboard?.nextBillingAt ?? null);
+  const billingInterval = dashboard?.billingInterval ?? null;
 
   const deckLimit = dashboard?.limits.deckLimit ?? 3;
   const decksCreated = dashboard?.usage.decksCreated ?? 0;
 
-  const questionsLimit = dashboard?.limits.questionsPerDeck ?? 10;
   const speechCap = dashboard?.limits.speechSecondsPerDay ?? 300;
   const speechUsed = dashboard?.usage.speechSecondsToday ?? 0;
+  const hasReachedDeckLimit =
+    plan === "free" && typeof deckLimit === "number" && decksCreated >= deckLimit;
+  const hasReachedSpeechLimit =
+    plan === "free" && typeof speechCap === "number" && speechUsed >= speechCap;
 
-  const statusText =
-    status === "cancel_at_period_end"
-      ? `Kündigung geplant - Zugriff bis ${statusDate ?? "Ende der Laufzeit"}`
-      : status === "past_due"
-        ? "Zahlung fehlgeschlagen"
-        : null;
+  const currentPlanLabel = plan === "free" ? "Kostenlos" : plan === "premium" ? "Premium" : "Ultimate";
+  const billingLabel = billingInterval === "yearly" ? "Jährlich" : billingInterval === "monthly" ? "Monatlich" : "-";
+  const isFreePlan = plan === "free";
+  const isCancelAtPeriodEnd = status === "cancel_at_period_end";
+  const isPaidActive = !isFreePlan && !isCancelAtPeriodEnd;
+  const hasPaymentIssue = status === "past_due";
 
-  const modalCopy = useMemo(() => (pendingAction ? getModalCopy(pendingAction) : null), [pendingAction]);
+  const modalCopy = useMemo(
+    () => (pendingAction ? getModalCopy(pendingAction, { nextBillingDate }) : null),
+    [nextBillingDate, pendingAction]
+  );
 
   const isModalBusy =
     (pendingAction?.kind === "portal" && isOpeningPortal) ||
-    (pendingAction?.kind === "danger" && isRunningDangerAction);
+    (pendingAction?.kind === "danger" && isRunningDangerAction) ||
+    (pendingAction?.kind === "subscription_cancel" && isUpdatingSubscription);
   const needsDeletePhrase = pendingAction?.kind === "danger" && pendingAction.action === "delete_account";
   const isDeletePhraseValid = deleteConfirmText.trim() === "DELETE";
   const isConfirmDisabled = isModalBusy || (needsDeletePhrase && !isDeletePhraseValid);
@@ -618,22 +698,28 @@ export function AccountDashboardClient({
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <UsageMetricCard
                     title="Lernsets erstellt"
+                    tooltip="Maximale Anzahl an Lernsets in deinem Account."
                     current={String(decksCreated)}
                     limit={formatLimitedValue(deckLimit)}
                     progress={progressForLimited(decksCreated, deckLimit)}
+                    limitReached={hasReachedDeckLimit}
+                    limitReachedHint={plan === "free" ? "Upgrade auf Premium für unlimitierte Lernsets." : undefined}
+                    hideLimitStatusLabel
                   />
-                  <UsageMetricCard
+                  <QuestionsPerDeckCapabilityCard
                     title="Fragen pro Lernset"
-                    current={renderLimit(questionsLimit)}
-                    limit={renderLimit(questionsLimit)}
-                    progress={100}
+                    tooltip="Maximale Anzahl an Fragen innerhalb eines Lernsets."
+                    plan={plan}
                   />
                   <UsageMetricCard
-                    title="Sprachsekunden heute"
+                    title="Erklärungszeit (Audio)"
+                    tooltip="Zeit für mündliche Antworten auf Fragen. Deine Antwort wird transkribiert und von der AI bewertet."
                     current={String(speechUsed)}
                     limit={formatLimitedValue(speechCap)}
                     progress={progressForLimited(speechUsed, speechCap)}
                     helper={`Zurückgesetzt in ${speechResetCountdown}`}
+                    limitReached={hasReachedSpeechLimit}
+                    limitReachedHint={plan === "free" ? "Upgrade auf Premium für mehr Lernzeit." : undefined}
                   />
                 </div>
               </>
@@ -649,22 +735,103 @@ export function AccountDashboardClient({
                   <ErrorPanel message="Abo-Daten konnten nicht geladen werden." onRetry={() => void loadDashboard()} />
                 )}
 
-                {(statusText || plan !== "free") && (
-                  <div className="rounded-lg border border-[var(--color-border)] bg-background p-4 text-sm">
-                    {statusText && <p className="text-foreground">{statusText}</p>}
-                    {plan !== "free" && (
-                      <p className={cn("text-muted-foreground", statusText && "mt-1")}>
-                        Nächste Abrechnung am {nextBillingDate ?? "-"}
-                      </p>
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4 text-sm">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Aktueller Plan</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{currentPlanLabel}</p>
+                    </div>
+                    {!isFreePlan && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">
+                          {isCancelAtPeriodEnd ? "Abo endet am" : "Nächste Abbuchung"}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">
+                          {isCancelAtPeriodEnd ? statusDate ?? "-" : nextBillingDate ?? "-"}
+                        </p>
+                      </div>
+                    )}
+                    {!isFreePlan && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Abrechnung</p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">{billingLabel}</p>
+                      </div>
                     )}
                   </div>
-                )}
+                  {hasPaymentIssue && (
+                    <p className="mt-3 text-sm text-[var(--color-warning)]">
+                      Zahlung fehlgeschlagen. Bitte Zahlungsmethode prüfen.
+                    </p>
+                  )}
+                  {!isFreePlan && (
+                    <div className="mt-3">
+                      {isPaidActive && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full sm:w-auto"
+                          onClick={() => setPendingAction({ kind: "subscription_cancel" })}
+                          disabled={!dashboard?.canManageSubscription || isUpdatingSubscription}
+                        >
+                          Abo kündigen
+                        </Button>
+                      )}
+                      {isCancelAtPeriodEnd && (
+                        <LoadingButton
+                          variant="outline"
+                          text="Kündigung rückgängig machen"
+                          loadingText="Aktualisiere"
+                          isLoading={isUpdatingSubscription}
+                          onClick={() => void updateSubscriptionCancellation("resume")}
+                          className="w-full sm:w-auto"
+                          disabled={!dashboard?.canManageSubscription || isUpdatingSubscription}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5 flex items-center justify-between gap-3">
+                  <p className="text-sm text-muted-foreground">Abrechnung</p>
+                  <div className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-card)] p-1">
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle("monthly")}
+                      className={cn(
+                        "inline-flex items-center rounded-full px-4 py-1.5 text-[14px] font-medium transition-all duration-200 ease-out",
+                        billingCycle === "monthly"
+                          ? "bg-[var(--color-accent)] text-black"
+                          : "text-muted-foreground opacity-70 hover:text-foreground hover:opacity-100"
+                      )}
+                    >
+                      Monatlich
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle("yearly")}
+                      className={cn(
+                        "inline-flex items-center rounded-full px-4 py-1.5 text-[14px] font-medium transition-all duration-200 ease-out",
+                        billingCycle === "yearly"
+                          ? "bg-[var(--color-accent)] text-black"
+                          : "text-muted-foreground opacity-70 hover:text-foreground hover:opacity-100"
+                      )}
+                    >
+                      <span>Jährlich</span>
+                      <span className="ml-[6px] rounded-[6px] bg-[var(--color-accent)] px-[6px] py-[2px] text-[11px] leading-none text-black">
+                        -20%
+                      </span>
+                    </button>
+                  </div>
+                </div>
 
                 <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
                   {PLAN_CARDS.map((card) => {
                     const isCurrentPlan = card.tier === plan;
                     const isUpgradePath = PLAN_ORDER[card.tier] > PLAN_ORDER[plan];
                     const canUpgradeToCard = card.tier !== "free" && isUpgradePath;
+                    const effectiveMonthlyPrice =
+                      billingCycle === "yearly" ? card.monthlyPrice * 0.8 : card.monthlyPrice;
+                    const annualPrice = effectiveMonthlyPrice * 12;
 
                     const ctaLabel = isCurrentPlan ? "Aktueller Plan" : canUpgradeToCard ? "Upgrade" : "Inklusive";
                     const ctaDisabled = !canUpgradeToCard;
@@ -673,68 +840,72 @@ export function AccountDashboardClient({
                       <article
                         key={card.tier}
                         className={cn(
-                          "rounded-xl border p-5",
+                          "relative flex h-full flex-col rounded-xl border bg-[var(--color-card)] p-5",
                           card.highlighted
-                            ? "border-transparent [background:var(--color-accent-dark)] text-white"
-                            : "border-[var(--color-border)] bg-background"
+                            ? "border-2 border-[var(--color-accent)]"
+                            : "border-[var(--color-border)]"
                         )}
+                        style={
+                          card.highlighted
+                            ? { boxShadow: "0 0 20px rgba(var(--color-accent-rgb), 0.25)" }
+                            : undefined
+                        }
                       >
-                        <p className={cn("text-sm font-semibold", card.highlighted ? "text-white" : "text-foreground")}>
-                          {card.title}
+                        {card.badge && (
+                          <p className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-md bg-[var(--color-accent)] px-2 py-1 text-[12px] font-semibold text-black">
+                            {card.badge}
+                          </p>
+                        )}
+                        <p className="text-sm font-semibold text-foreground">{card.title}</p>
+                        <p className="mt-1 text-xl font-semibold text-foreground">
+                          {formatEuroPrice(effectiveMonthlyPrice)} € / Monat
                         </p>
-                        <p className={cn("mt-1 text-xl font-semibold", card.highlighted ? "text-white" : "text-foreground")}>
-                          {card.price}
-                        </p>
+                        {billingCycle === "yearly" && card.tier !== "free" && (
+                          <p className="mt-1 text-xs text-muted-foreground/80">
+                            {formatEuroPrice(annualPrice)} € / Jahr · 20% Rabatt
+                          </p>
+                        )}
 
                         <ul className="mt-4 space-y-2 text-sm">
                           {card.features.map((feature) => (
-                            <li
-                              key={feature}
-                              className={cn(card.highlighted ? "text-white/90" : "text-muted-foreground")}
-                            >
-                              - {feature}
+                            <li key={feature} className="text-muted-foreground">
+                              {feature}
                             </li>
                           ))}
                         </ul>
+                        {card.note && <p className="mt-1.5 text-xs text-muted-foreground/70">{card.note}</p>}
 
-                        <Button
-                          type="button"
-                          className={cn(
-                            "mt-5 w-full",
-                            card.highlighted &&
-                              "border-white/40 bg-white text-[var(--color-accent-dark)] hover:bg-white/90"
-                          )}
-                          variant={card.highlighted || ctaDisabled ? "outline" : "default"}
-                          onClick={() => {
-                            if (!canUpgradeToCard) return;
-                            setPendingAction({ kind: "upgrade", target: card.tier as UpgradeTarget });
-                          }}
-                          disabled={ctaDisabled}
-                        >
-                          {ctaLabel}
-                        </Button>
+                        <div className="mt-auto pt-5">
+                          <Button
+                            type="button"
+                            className="w-full"
+                            variant={ctaDisabled ? "outline" : "default"}
+                            onClick={() => {
+                              if (!canUpgradeToCard) return;
+                              setPendingAction({ kind: "upgrade", target: card.tier as UpgradeTarget });
+                            }}
+                            disabled={ctaDisabled}
+                          >
+                            {ctaLabel}
+                          </Button>
+                          <p
+                            className={cn(
+                              "mt-1.5 text-center text-xs",
+                              canUpgradeToCard ? "text-muted-foreground/70" : "invisible"
+                            )}
+                          >
+                            Jederzeit kündbar.
+                          </p>
+                        </div>
                       </article>
                     );
                   })}
                 </div>
 
-                {plan !== "free" && (
-                  <div className="mt-5">
-                    <LoadingButton
-                      variant="outline"
-                      text="Abo verwalten"
-                      loadingText="Öffne Portal"
-                      isLoading={isOpeningPortal}
-                      onClick={() => setPendingAction({ kind: "portal" })}
-                      disabled={!dashboard?.canManageSubscription || isOpeningPortal}
-                      className="w-full sm:w-auto"
-                    />
-                    {!dashboard?.canManageSubscription && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Abo-Verwaltung ist für diesen Account aktuell nicht verfügbar.
-                      </p>
-                    )}
-                  </div>
+                {!isFreePlan && !dashboard?.canManageSubscription && (
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    Abo-Verwaltung ist für diesen Account aktuell nicht verfügbar.
+                  </p>
                 )}
               </>
             )}
@@ -781,7 +952,14 @@ export function AccountDashboardClient({
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/25 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-5 shadow-lg">
             <h3 className="text-base font-semibold text-foreground">{modalCopy.title}</h3>
-            <p className="mt-2 text-sm text-muted-foreground">{modalCopy.description}</p>
+            <p
+              className={cn(
+                "mt-2 text-sm text-muted-foreground",
+                pendingAction?.kind === "subscription_cancel" && "whitespace-pre-line"
+              )}
+            >
+              {modalCopy.description}
+            </p>
             {needsDeletePhrase && (
               <div className="mt-4 space-y-2">
                 <p className="text-xs text-muted-foreground">
@@ -850,29 +1028,164 @@ function SettingsSection({
 
 function UsageMetricCard({
   title,
+  tooltip,
   current,
   limit,
   progress,
   helper,
+  limitReached = false,
+  limitReachedHint,
+  hideLimitStatusLabel = false,
 }: {
   title: string;
+  tooltip?: string;
   current: string;
   limit: string;
   progress: number;
   helper?: string;
+  limitReached?: boolean;
+  limitReachedHint?: string;
+  hideLimitStatusLabel?: boolean;
 }): JSX.Element {
+  const currentValue = parseNumericValue(current);
+  const limitValue = parseNumericValue(limit);
+  const isLimitExceeded =
+    currentValue !== null && limitValue !== null && currentValue > limitValue;
+  const showExceededNotice = isLimitExceeded && !hideLimitStatusLabel;
+  const showReachedNotice = limitReached && !isLimitExceeded && !hideLimitStatusLabel;
+  const showUpgradeHint = Boolean(limitReachedHint) && (limitReached || isLimitExceeded);
+
   return (
-    <article className="rounded-lg border border-[var(--color-border)] bg-background p-4">
-      <p className="text-sm font-medium text-foreground">{title}</p>
+    <article className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4">
+      <div className="flex items-center gap-1.5">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        {tooltip && (
+          <InfoTooltip
+            title={title}
+            description={tooltip}
+            multilineDescription
+            placement="bottom-left"
+            className="[&>span]:h-4 [&>span]:w-4"
+            contentClassName="max-w-[min(16rem,calc(100vw-2rem))] whitespace-normal"
+            arrowClassName="right-[16px]"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              className="h-4 w-4 fill-none text-muted-foreground transition-colors duration-300"
+            >
+              <path
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            </svg>
+          </InfoTooltip>
+        )}
+      </div>
       <p className="mt-3 text-lg font-semibold text-foreground">
         {current} <span className="text-sm font-medium text-muted-foreground">/ {limit}</span>
       </p>
       <div className="mt-3 h-[6px] w-full rounded-[4px] bg-[var(--color-border)]">
         <div className="h-full rounded-[4px] bg-[var(--color-accent)]" style={{ width: `${progress}%` }} />
       </div>
+      {showExceededNotice && <p className="mt-1 text-xs text-[var(--color-warning)]">Limit überschritten</p>}
+      {showReachedNotice && <p className="mt-1.5 text-[13px] text-[var(--color-warning)]">Limit erreicht</p>}
+      {showUpgradeHint && (
+        <p className="mt-1 text-[13px] text-[var(--color-warning)]">{limitReachedHint}</p>
+      )}
       {helper && <p className="mt-2 text-xs text-muted-foreground">{helper}</p>}
     </article>
   );
+}
+
+function QuestionsPerDeckCapabilityCard({
+  title,
+  tooltip,
+  plan,
+}: {
+  title: string;
+  tooltip?: string;
+  plan: PlanTier;
+}): JSX.Element {
+  const planLimits: Array<{ tier: PlanTier; label: string; value: string }> = [
+    { tier: "free", label: "Kostenlos", value: "10" },
+    { tier: "premium", label: "Premium", value: "25" },
+    { tier: "ultimate", label: "Ultimate", value: "50" },
+  ];
+
+  return (
+    <article className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4">
+      <div className="flex items-center gap-1.5">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        {tooltip && (
+          <InfoTooltip
+            title={title}
+            description={tooltip}
+            multilineDescription
+            placement="bottom-left"
+            className="[&>span]:h-4 [&>span]:w-4"
+            contentClassName="max-w-[min(16rem,calc(100vw-2rem))] whitespace-normal"
+            arrowClassName="right-[26px]"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              className="h-4 w-4 fill-none text-muted-foreground transition-colors duration-300"
+            >
+              <path
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            </svg>
+          </InfoTooltip>
+        )}
+      </div>
+      <div className="mt-3 flex flex-col gap-1.5 text-sm">
+        {planLimits.map((entry) => {
+          const isCurrent = entry.tier === plan;
+          return (
+            <div
+              key={entry.tier}
+              className={cn(
+                "flex items-center justify-between rounded-md px-1.5 py-1",
+                isCurrent
+                  ? "bg-muted font-semibold text-foreground"
+                  : "text-foreground/70"
+              )}
+            >
+              <span className="flex items-center gap-2">
+                {isCurrent && (
+                  <span className="inline-flex items-center rounded bg-muted-foreground/20 p-0.5 text-foreground/80">
+                    <CheckCircleIcon className="h-3.5 w-3.5" />
+                  </span>
+                )}
+                <span>{entry.label}</span>
+              </span>
+              <span
+                className={cn(
+                  "rounded px-2 py-0.5",
+                  isCurrent ? "bg-muted-foreground/20 text-foreground" : "bg-muted-foreground/10 text-foreground/80"
+                )}
+              >
+                {entry.value}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </article>
+  );
+}
+
+function parseNumericValue(value: string): number | null {
+  const normalized = value.replace(",", ".").replace(/[^\d.-]/g, "");
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function DangerActionRow({
@@ -927,7 +1240,7 @@ function UsageSkeleton(): JSX.Element {
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {[0, 1, 2].map((index) => (
-        <div key={index} className="space-y-3 rounded-lg border border-[var(--color-border)] bg-background p-4">
+        <div key={index} className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4">
           <div className="h-4 w-1/2 rounded bg-muted" />
           <div className="h-6 w-2/3 rounded bg-muted" />
           <div className="h-[6px] w-full rounded-[4px] bg-muted" />
@@ -940,13 +1253,13 @@ function UsageSkeleton(): JSX.Element {
 function SubscriptionSkeleton(): JSX.Element {
   return (
     <div className="space-y-5">
-      <div className="space-y-2 rounded-lg border border-[var(--color-border)] bg-background p-4">
+      <div className="space-y-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4">
         <div className="h-4 w-1/3 rounded bg-muted" />
         <div className="h-4 w-1/2 rounded bg-muted" />
       </div>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {[0, 1, 2].map((index) => (
-          <div key={index} className="space-y-3 rounded-xl border border-[var(--color-border)] bg-background p-5">
+          <div key={index} className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-5">
             <div className="h-5 w-1/3 rounded bg-muted" />
             <div className="h-7 w-1/2 rounded bg-muted" />
             <div className="h-20 rounded bg-muted" />

@@ -11,6 +11,9 @@ type StripePrice = {
   id: string;
   nickname?: string | null;
   lookup_key?: string | null;
+  recurring?: {
+    interval?: string | null;
+  } | null;
 };
 
 type StripeSubscriptionItem = {
@@ -29,6 +32,8 @@ type StripeListResponse<T> = {
   object: "list";
   data: T[];
 };
+
+export type StripeBillingInterval = "monthly" | "yearly" | null;
 
 function getStripeSecretKey(): string {
   return String(process.env.STRIPE_SECRET_KEY ?? "").trim();
@@ -150,20 +155,17 @@ function mapStatus(subscription: StripeSubscription): SubscriptionStatus {
   return "active";
 }
 
-export async function getStripeSubscriptionSnapshot(email: string): Promise<{
-  customerId: string;
-  plan: PlanTier;
-  status: SubscriptionStatus;
-  currentPeriodEnd: string | null;
-  nextBillingAt: string | null;
-} | null> {
-  if (!isStripeConfigured()) return null;
+function mapBillingInterval(subscription: StripeSubscription): StripeBillingInterval {
+  const firstPrice = subscription.items?.data?.[0]?.price;
+  const interval = String(firstPrice?.recurring?.interval ?? "").trim().toLowerCase();
+  if (interval === "year") return "yearly";
+  if (interval === "month") return "monthly";
+  return null;
+}
 
-  const customer = await findStripeCustomerByEmail(email);
-  if (!customer?.id) return null;
-
+async function findMostRelevantSubscriptionForCustomer(customerId: string): Promise<StripeSubscription | null> {
   const query = new URLSearchParams({
-    customer: customer.id,
+    customer: customerId,
     status: "all",
     limit: "10",
   });
@@ -172,7 +174,23 @@ export async function getStripeSubscriptionSnapshot(email: string): Promise<{
   const subscriptionResponse = await stripeRequest<StripeListResponse<StripeSubscription>>(
     `/subscriptions?${query.toString()}`
   );
-  const selected = chooseMostRelevantSubscription(subscriptionResponse.data ?? []);
+  return chooseMostRelevantSubscription(subscriptionResponse.data ?? []);
+}
+
+export async function getStripeSubscriptionSnapshot(email: string): Promise<{
+  customerId: string;
+  plan: PlanTier;
+  status: SubscriptionStatus;
+  currentPeriodEnd: string | null;
+  nextBillingAt: string | null;
+  billingInterval: StripeBillingInterval;
+} | null> {
+  if (!isStripeConfigured()) return null;
+
+  const customer = await findStripeCustomerByEmail(email);
+  if (!customer?.id) return null;
+
+  const selected = await findMostRelevantSubscriptionForCustomer(customer.id);
   if (!selected) {
     return {
       customerId: customer.id,
@@ -180,11 +198,13 @@ export async function getStripeSubscriptionSnapshot(email: string): Promise<{
       status: "active",
       currentPeriodEnd: null,
       nextBillingAt: null,
+      billingInterval: null,
     };
   }
 
   const plan = inferPlanFromSubscription(selected);
   const status = mapStatus(selected);
+  const billingInterval = mapBillingInterval(selected);
   const periodEnd =
     typeof selected.current_period_end === "number" && selected.current_period_end > 0
       ? new Date(selected.current_period_end * 1000).toISOString()
@@ -196,5 +216,36 @@ export async function getStripeSubscriptionSnapshot(email: string): Promise<{
     status,
     currentPeriodEnd: periodEnd,
     nextBillingAt: plan === "free" ? null : periodEnd,
+    billingInterval,
   };
+}
+
+export async function setSubscriptionCancelAtPeriodEndByEmail(
+  email: string,
+  cancelAtPeriodEnd: boolean
+): Promise<{
+  customerId: string;
+  plan: PlanTier;
+  status: SubscriptionStatus;
+  currentPeriodEnd: string | null;
+  nextBillingAt: string | null;
+  billingInterval: StripeBillingInterval;
+} | null> {
+  if (!isStripeConfigured()) return null;
+
+  const customer = await findStripeCustomerByEmail(email);
+  if (!customer?.id) return null;
+
+  const selected = await findMostRelevantSubscriptionForCustomer(customer.id);
+  if (!selected?.id) return null;
+
+  const body = new URLSearchParams({
+    cancel_at_period_end: cancelAtPeriodEnd ? "true" : "false",
+  });
+  await stripeRequest<StripeSubscription>(`/subscriptions/${selected.id}`, {
+    method: "POST",
+    body: body.toString(),
+  });
+
+  return getStripeSubscriptionSnapshot(email);
 }
