@@ -3,6 +3,11 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { loadPrompt, loadRenderedPrompt } from '@/lib/prompt-store';
+import {
+    normalizeSpeechSeconds,
+    recordSpeechUsage,
+    resolveDateKeyFromOffset,
+} from '@/lib/speech-usage';
 
 const groq = new OpenAI({
     apiKey: process.env.GROQ_API_KEY,
@@ -24,7 +29,11 @@ export async function POST(request: Request): Promise<NextResponse> {
         const questionId = formData.get('questionId') as string;
         const deckId = formData.get('deckId') as string;
         const evaluationModeRaw = formData.get('evaluationMode') as string | null;
+        const speechSecondsRaw = formData.get('speechSeconds');
+        const tzOffsetMinutesRaw = formData.get('tzOffsetMinutes');
         const evaluationMode = evaluationModeRaw === 'supportive' ? 'supportive' : 'graded';
+        const speechSeconds = normalizeSpeechSeconds(speechSecondsRaw);
+        const speechDateKey = resolveDateKeyFromOffset(tzOffsetMinutesRaw);
 
         if (!file || !questionId || !deckId) {
             return NextResponse.json({ error: 'Missing file, questionId or deckId' }, { status: 400 });
@@ -67,6 +76,18 @@ export async function POST(request: Request): Promise<NextResponse> {
 
         if (!question) {
             return NextResponse.json({ error: 'Question not found' }, { status: 404 });
+        }
+
+        if (speechSeconds > 0) {
+            try {
+                await recordSpeechUsage({
+                    userId: session.user.id,
+                    dateKey: speechDateKey,
+                    speechSeconds,
+                });
+            } catch (speechUsageError) {
+                console.error('Failed to persist speech usage:', speechUsageError);
+            }
         }
 
         // 3. Bewertung mit OpenAI

@@ -17,6 +17,7 @@ model User {
   sessions      Session[]
   decks         Deck[]
   reviewProgress ReviewProgress[]
+  dailySpeechUsage DailySpeechUsage[]
 }
 
 model Account {
@@ -101,4 +102,18 @@ model ReviewProgress {
   card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
 
   @@unique([userId, cardId])
+}
+
+model DailySpeechUsage {
+  id           String   @id @default(cuid())
+  userId       String
+  dateKey      String
+  speechSeconds Int     @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateKey])
+  @@index([dateKey])
 }

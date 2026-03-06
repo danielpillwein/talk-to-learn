@@ -11,12 +11,14 @@ import { IconSwap } from "@/components/ui/icon";
 import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
+  ChartBarIcon,
   CreditCardIcon,
   UserIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import {
   ArrowRightOnRectangleIcon as ArrowRightOnRectangleIconSolid,
+  ChartBarIcon as ChartBarIconSolid,
   CreditCardIcon as CreditCardIconSolid,
   UserIcon as UserIconSolid,
 } from "@heroicons/react/24/solid";
@@ -70,7 +72,10 @@ export function AppHeader(): JSX.Element {
     );
   }, [user?.image, user?.name, avatarFailed]);
 
-  const hasMobileMenu = pathname?.startsWith("/app/learn") || pathname?.startsWith("/app/create");
+  const hasMobileMenu =
+    pathname?.startsWith("/app/learn") ||
+    pathname?.startsWith("/app/create") ||
+    pathname?.startsWith("/app/account");
 
   return (
     <>
@@ -146,6 +151,18 @@ export function AppHeader(): JSX.Element {
                       className="h-4 w-4 text-muted-foreground group-hover:text-foreground"
                     />
                     Mein Account
+                  </Link>
+                  <Link
+                    href="/app/account#usage"
+                    className="group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-normal text-foreground transition hover:bg-muted"
+                    role="menuitem"
+                  >
+                    <IconSwap
+                      outline={ChartBarIcon}
+                      solid={ChartBarIconSolid}
+                      className="h-4 w-4 text-muted-foreground group-hover:text-foreground"
+                    />
+                    Nutzung
                   </Link>
                   <Link
                     href="/app/account#abo"
@@ -244,6 +261,18 @@ export function AppHeader(): JSX.Element {
                         className="h-4 w-4 text-muted-foreground group-hover:text-foreground"
                       />
                       Mein Account
+                    </Link>
+                    <Link
+                      href="/app/account#usage"
+                      onClick={() => setMobileLearnMenuOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-normal text-foreground transition hover:bg-muted"
+                    >
+                      <IconSwap
+                        outline={ChartBarIcon}
+                        solid={ChartBarIconSolid}
+                        className="h-4 w-4 text-muted-foreground group-hover:text-foreground"
+                      />
+                      Nutzung
                     </Link>
                     <Link
                       href="/app/account#abo"

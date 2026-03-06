@@ -86,6 +86,21 @@ interface StageNotice {
     description: string;
 }
 
+function resolveStageFromProgress(payload: {
+    learningPhase: 'intro' | 'scaffolded' | 'free';
+    learningStage?: LearningStage;
+}): LearningStage {
+    if (payload.learningStage) {
+        return payload.learningStage;
+    }
+
+    if (payload.learningPhase === 'free') {
+        return 'free';
+    }
+
+    return payload.learningPhase === 'scaffolded' ? 'scaffolded' : 'intro';
+}
+
 export default function LearnDetailPage(): JSX.Element {
     const params = useParams<{ slug: string }>();
     const router = useRouter();
@@ -111,6 +126,7 @@ export default function LearnDetailPage(): JSX.Element {
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
+    const recordingStartedAtRef = useRef<number | null>(null);
     const srManagerRef = useRef<SpacedRepetitionManager | null>(null);
 
     const updateQuestionState = (questionIndex: number, patch: Partial<Question>) => {
@@ -156,7 +172,7 @@ export default function LearnDetailPage(): JSX.Element {
                         const progressData = (await progressResponse.json()) as ProgressResponse;
                         setCurrentQuestionId(progressData.nextQuestionId);
                         setStats(progressData.stats);
-                        setLearningStage(progressData.learningStage ?? (progressData.learningPhase === 'intro' ? 'intro' : 'scaffolded'));
+                        setLearningStage(resolveStageFromProgress(progressData));
                         usedServer = true;
                     }
                 } catch (progressError) {
@@ -250,7 +266,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
 3) Erklären: nur mit der Frage erklären`;
     const stageTooltipTitle ='Was heißt das?';
 
-    const evaluateAnswer = async (audioBlob: Blob) => {
+    const evaluateAnswer = async (audioBlob: Blob, speechSeconds: number) => {
         if (currentQuestionId === null || !deckId) return;
         setIsEvaluating(true);
         setError(null);
@@ -261,6 +277,8 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
         formData.append('questionId', currentQuestionId.toString());
         formData.append('deckId', deckId);
         formData.append('evaluationMode', evaluationMode);
+        formData.append('speechSeconds', String(speechSeconds));
+        formData.append('tzOffsetMinutes', String(new Date().getTimezoneOffset()));
 
         try {
             const response = await fetch('/api/evaluate', {
@@ -312,14 +330,20 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
 
             mediaRecorder.onstop = async () => {
                 const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                await evaluateAnswer(audioBlob);
+                const startedAt = recordingStartedAtRef.current ?? Date.now();
+                const elapsedMs = Math.max(0, Date.now() - startedAt);
+                const speechSeconds = Math.max(0, Math.round(elapsedMs / 1000));
+                recordingStartedAtRef.current = null;
+                await evaluateAnswer(audioBlob, speechSeconds);
                 stream.getTracks().forEach((track) => track.stop());
             };
 
             mediaRecorder.start();
+            recordingStartedAtRef.current = Date.now();
             setIsRecording(true);
         } catch (err) {
             setError('Fehler beim Zugriff auf das Mikrofon');
+            recordingStartedAtRef.current = null;
         }
     };
 
@@ -345,7 +369,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
     };
 
     const applyProgressResponse = (data: ProgressResponse, previousStage: LearningStage) => {
-        const nextStage = data.learningStage ?? (data.learningPhase === 'intro' ? 'intro' : 'scaffolded');
+        const nextStage = resolveStageFromProgress(data);
         setCurrentQuestionId(data.nextQuestionId);
         setStats(data.stats);
         setLearningStage(nextStage);
@@ -482,7 +506,7 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                 const data = (await response.json()) as ProgressResponse;
                 setCurrentQuestionId(data.nextQuestionId);
                 setStats(data.stats);
-                setLearningStage(data.learningStage ?? (data.learningPhase === 'intro' ? 'intro' : 'scaffolded'));
+                setLearningStage(resolveStageFromProgress(data));
                 usedServer = true;
             }
         } catch (err) {
