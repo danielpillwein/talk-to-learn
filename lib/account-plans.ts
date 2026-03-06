@@ -1,5 +1,7 @@
-export type PlanTier = "free" | "premium" | "ultimate";
-export type LimitedValue = number | "unlimited";
+import { billing, type Plan, type LimitedValue as BillingLimitedValue } from "@/src/config/billing";
+
+export type PlanTier = Plan;
+export type LimitedValue = BillingLimitedValue;
 export type SubscriptionStatus = "active" | "cancel_at_period_end" | "past_due";
 
 export type PlanLimits = {
@@ -9,30 +11,26 @@ export type PlanLimits = {
   aiRefine: boolean;
 };
 
-export const PLAN_LABELS: Record<PlanTier, string> = {
-  free: "Kostenlos",
-  premium: "Premium",
-  ultimate: "Ultimate",
-};
+export const PLAN_LABELS: Record<PlanTier, string> = billing.planLabels;
 
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
-    questionsPerDeck: 10,
-    speechSecondsPerDay: 300,
-    deckLimit: 3,
-    aiRefine: false,
+    questionsPerDeck: billing.plans.free.maxQuestionsPerDeck,
+    speechSecondsPerDay: billing.plans.free.dailyExplanationSeconds,
+    deckLimit: billing.plans.free.maxDecks,
+    aiRefine: billing.capabilities.free.aiQuestionRefine,
   },
   premium: {
-    questionsPerDeck: 25,
-    speechSecondsPerDay: 1800,
-    deckLimit: "unlimited",
-    aiRefine: true,
+    questionsPerDeck: billing.plans.premium.maxQuestionsPerDeck,
+    speechSecondsPerDay: billing.plans.premium.dailyExplanationSeconds,
+    deckLimit: billing.plans.premium.maxDecks,
+    aiRefine: billing.capabilities.premium.aiQuestionRefine,
   },
   ultimate: {
-    questionsPerDeck: 50,
-    speechSecondsPerDay: "unlimited",
-    deckLimit: "unlimited",
-    aiRefine: true,
+    questionsPerDeck: billing.plans.ultimate.maxQuestionsPerDeck,
+    speechSecondsPerDay: billing.plans.ultimate.dailyExplanationSeconds,
+    deckLimit: billing.plans.ultimate.maxDecks,
+    aiRefine: billing.capabilities.ultimate.aiQuestionRefine,
   },
 };
 

@@ -5,6 +5,7 @@ import {
   extractTextFromFile,
   mapCreateDeckError,
 } from "@/lib/create-deck-ai";
+import { incrementDocumentsAnalyzedCounter } from "@/lib/public-stats";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -18,6 +19,13 @@ export async function POST(request: Request): Promise<NextResponse> {
       text: normalizedText,
       filename,
     });
+
+    // Count document analysis directly after a successful upload/derive step.
+    try {
+      await incrementDocumentsAnalyzedCounter();
+    } catch {
+      // Never block user flow if telemetry counter write fails.
+    }
 
     return NextResponse.json({
       suggestedTitle: derived.suggestedTitle,

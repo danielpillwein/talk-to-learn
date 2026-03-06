@@ -1,10 +1,15 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { Metadata } from "next";
-import { ThemeSwitchClient } from "@/components/theme-switch";
 import { HeroUploadCta } from "@/components/hero-upload-cta";
 import { HeroTypewriter } from "@/components/hero-typewriter";
 import { HeroReviewCarousel } from "@/components/hero-review-carousel";
+import { FeaturesBento } from "@/components/landing/FeaturesBento";
+import { HashScrollHandler } from "@/components/landing/hash-scroll-handler";
+import { LandingPricing } from "@/components/landing-pricing";
+import { FaqAccordion } from "@/components/faq/FaqAccordion";
+import { SiteFooter } from "@/components/site-footer";
+import { billing, getPricingCards } from "@/src/config/billing";
 
 export const metadata: Metadata = {
   title: "Talk to Learn | Sprechbasierte Lernsessions für Studierende",
@@ -26,63 +31,13 @@ export const metadata: Metadata = {
 };
 
 export default function LandingPage(): JSX.Element {
+  const pricingCards = getPricingCards();
   const trustBadges = [
     "Für Studierende",
     "KI-gestützt",
     "Personalisiert",
     "Feedback in Sekunden",
     "Erklären statt nur Wiederholen",
-  ];
-
-  const bentoFeatures = [
-    {
-      title: "Upload deiner Unterlagen",
-      text: "PDFs, Skripte oder Notizen rein – in Minuten startklar.",
-      span: "lg:col-span-5 lg:row-span-2",
-      tone: "bg-primary/10 border-primary/30",
-    },
-    {
-      title: "Automatische Fragen",
-      text: "Die KI baut Fragen, die auf Prüfungen einzahlen.",
-      span: "lg:col-span-4",
-      tone: "bg-accent/40 border-border",
-    },
-    {
-      title: "Audio-Erklärung",
-      text: "Du erklärst laut – so trainierst du echtes Verstehen.",
-      span: "lg:col-span-3",
-      tone: "bg-success/10 border-success/40",
-    },
-    {
-      title: "KI-Feedback & Rubrik",
-      text: "Klare Hinweise, was fehlt und wie du dich verbesserst.",
-      span: "lg:col-span-4",
-      tone: "bg-secondary/25 border-secondary/40",
-    },
-    {
-      title: "Musterantwort",
-      text: "Vergleiche deine Antwort mit der idealen Lösung.",
-      span: "lg:col-span-3",
-      tone: "bg-warning/10 border-warning/40",
-    },
-    {
-      title: "Lernset-Management",
-      text: "Organisiere Fächer, Themen und Prüfungen übersichtlich.",
-      span: "lg:col-span-5",
-      tone: "bg-muted/60 border-border",
-    },
-    {
-      title: "Fortschritt & Streaks",
-      text: "Sieh, was sitzt – und was du als Nächstes üben solltest.",
-      span: "lg:col-span-4",
-      tone: "bg-danger/10 border-danger/40",
-    },
-    {
-      title: "Export / Wiederholen",
-      text: "Nimm deine Sets mit oder wiederhole smart.",
-      span: "lg:col-span-3",
-      tone: "bg-card border-border",
-    },
   ];
 
   const steps = [
@@ -100,60 +55,9 @@ export default function LandingPage(): JSX.Element {
     },
   ];
 
-  const testimonials = [
-    {
-      name: "Lea M.",
-      study: "Psychologie, 3. Semester",
-      text: "Ich merke sofort, wo meine Erklärung wackelt. Das spart Stunden.",
-    },
-    {
-      name: "Jannis K.",
-      study: "BWL, Master",
-      text: "Audio erklären fühlt sich wie die Prüfung an – extrem hilfreich.",
-    },
-    {
-      name: "Sofia R.",
-      study: "Medizin, 1. Staatsexamen",
-      text: "Feedback + Musterantwort ist genau der Schritt, der mir fehlte.",
-    },
-  ];
-
-  const stats = [
-    { label: "Fragen geübt", value: "28.400+" },
-    { label: "Minuten gesprochen", value: "9.600+" },
-    { label: "Lernsets erstellt", value: "1.120+" },
-  ];
-
-  const faqs = [
-    {
-      question: "Welche Formate kann ich hochladen?",
-      answer:
-        "PDF, Text oder Markdown. Wichtig ist, dass die Inhalte strukturiert sind.",
-    },
-    {
-      question: "Wie entsteht das Feedback?",
-      answer:
-        "Die KI bewertet deine Antwort, zeigt Lücken und liefert eine Musterantwort.",
-    },
-    {
-      question: "Brauche ich besondere Technik für Audio?",
-      answer:
-        "Ein normales Laptop- oder Handy-Mikro reicht völlig aus.",
-    },
-    {
-      question: "Ist das für Gruppenarbeit geeignet?",
-      answer:
-        "Im Moment ist es auf Einzel-Lernsessions optimiert.",
-    },
-    {
-      question: "Kann ich die Lernsets exportieren?",
-      answer:
-        "Ja, Export und Wiederholungen sind Teil des Pro-Plans.",
-    },
-  ];
-
   return (
     <main className="bg-background text-foreground">
+      <HashScrollHandler />
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-4">
           <Link href="/" className="flex min-w-0 items-center gap-3 font-semibold">
@@ -194,14 +98,6 @@ export default function LandingPage(): JSX.Element {
             >
               Starten
             </Link>
-            <button
-              type="button"
-              className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground md:hidden"
-              aria-label="Menü öffnen"
-            >
-              Menü
-            </button>
-            <ThemeSwitchClient />
           </div>
         </div>
       </nav>
@@ -271,47 +167,7 @@ export default function LandingPage(): JSX.Element {
           </div>
         </header>
 
-        <section id="produkt" className="space-y-8">
-          <div className="flex items-end justify-between gap-6">
-            <div className="space-y-3">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Produkt
-              </p>
-              <h2 className="text-3xl font-semibold">Bento-Features für Fokus.</h2>
-              <p className="text-sm text-muted-foreground">
-                Klare Bausteine, die dich Schritt für Schritt durch den Lernflow
-                führen.
-              </p>
-            </div>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-12">
-            {bentoFeatures.map((feature) => (
-              <article
-                key={feature.title}
-                className={`group relative overflow-hidden rounded-3xl border p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-md ${feature.span} ${feature.tone} ${
-                  feature.title === "Upload deiner Unterlagen" ? "pb-32" : ""
-                }`}
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-background/60 text-sm font-semibold text-foreground transition duration-300 group-hover:scale-105">
-                  ✦
-                </div>
-                <h3 className="mt-4 text-lg font-semibold">{feature.title}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">{feature.text}</p>
-                <div className="mt-4 h-1 w-10 rounded-full bg-primary/40 transition duration-300 group-hover:w-16 group-hover:bg-primary/70" />
-                {feature.title === "Upload deiner Unterlagen" && (
-                  <Image
-                    src="/mascot/otter-curious.png"
-                    alt="Neugieriges Otter-Maskottchen"
-                    width={874}
-                    height={893}
-                    sizes="(max-width: 768px) 112px, 128px"
-                    className="pointer-events-none absolute bottom-0 right-4 h-28 w-auto object-contain transition duration-300 group-hover:scale-105 md:h-32"
-                  />
-                )}
-              </article>
-            ))}
-          </div>
-        </section>
+        <FeaturesBento />
 
         <section className="space-y-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-6">
@@ -347,40 +203,6 @@ export default function LandingPage(): JSX.Element {
           </div>
         </section>
 
-        <section className="space-y-8">
-          <div className="flex items-end justify-between gap-6">
-            <div className="space-y-3">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Stimmen aus dem Studium
-              </p>
-              <h2 className="text-3xl font-semibold">Sympathisch, weil es hilft.</h2>
-            </div>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-3">
-            {testimonials.map((item) => (
-              <article
-                key={item.name}
-                className="rounded-3xl border border-border bg-card p-5 shadow-sm transition hover:-translate-y-1 hover:border-foreground/20"
-              >
-                <p className="text-sm text-muted-foreground">&ldquo;{item.text}&rdquo;</p>
-                <p className="mt-4 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  {item.name} · {item.study}
-                </p>
-              </article>
-            ))}
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {stats.map((stat) => (
-              <div key={stat.label} className="rounded-2xl border border-border bg-accent/30 p-4 text-center text-accent-foreground">
-                <p className="text-2xl font-semibold">{stat.value}</p>
-                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  {stat.label}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
         <section id="preise" className="space-y-8">
           <div className="flex items-end justify-between gap-6">
             <div className="space-y-3">
@@ -390,72 +212,15 @@ export default function LandingPage(): JSX.Element {
               <h2 className="text-3xl font-semibold">Fair, klar, studierendengerecht.</h2>
             </div>
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <article className="rounded-3xl border border-border bg-card p-6 shadow-sm transition hover:-translate-y-1 hover:border-foreground/20">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Free
-              </p>
-              <h3 className="mt-3 text-2xl font-semibold">Für den Einstieg</h3>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Begrenzte Uploads und Basisfeedback für schnelle Sessions.
-              </p>
-              <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-                <li>Bis zu 1 Lernset</li>
-                <li>Basis-Feedback</li>
-                <li>Standard-Export</li>
-              </ul>
-              <Link
-                href="/auth/sign-in"
-                className="mt-6 inline-flex rounded-full border border-border px-4 py-2 text-sm font-semibold text-foreground transition hover:border-foreground/30"
-              >
-                Kostenlos starten
-              </Link>
-            </article>
-            <article className="rounded-3xl border border-primary/40 bg-primary/10 p-6 shadow-sm transition hover:-translate-y-1 hover:border-primary/60">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Pro
-              </p>
-              <h3 className="mt-3 text-2xl font-semibold">Für Fokus-Prüfungen</h3>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Mehr Uploads, tiefere Auswertung, Export & Analysen.
-              </p>
-              <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-                <li>Mehrere Lernsets & Uploads</li>
-                <li>Erweiterte Analyse</li>
-                <li>Export & Lernverlauf</li>
-              </ul>
-              <Link
-                href="/auth/sign-in"
-                className="mt-6 inline-flex rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
-              >
-                Pro testen
-              </Link>
-            </article>
-          </div>
+          <LandingPricing
+            cards={pricingCards}
+            yearlyDiscountBadge={billing.text.pricing.yearlyDiscountBadge}
+            yearlySavingsLabel={billing.text.pricing.yearlySavingsLabel}
+          />
         </section>
 
         <section className="space-y-8">
-          <div className="flex items-end justify-between gap-6">
-            <div className="space-y-3">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                FAQ
-              </p>
-              <h2 className="text-3xl font-semibold">Alles Wichtige auf einen Blick.</h2>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {faqs.map((faq) => (
-              <details
-                key={faq.question}
-                className="rounded-2xl border border-border bg-card p-4 transition hover:border-foreground/20"
-              >
-                <summary className="cursor-pointer text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-                  {faq.question}
-                </summary>
-                <p className="mt-2 text-sm text-muted-foreground">{faq.answer}</p>
-              </details>
-            ))}
-          </div>
+          <FaqAccordion />
         </section>
 
         <section className="rounded-3xl border border-border bg-card p-6 shadow-sm md:p-10">
@@ -477,17 +242,7 @@ export default function LandingPage(): JSX.Element {
           </div>
         </section>
 
-        <footer className="flex flex-col gap-3 border-t border-border/60 pt-6 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-          <p>© {new Date().getFullYear()} Talk to Learn</p>
-          <div className="flex gap-4">
-            <Link
-              href="https://www.instagram.com/dani.pillwein/"
-              className="hover:text-foreground"
-            >
-              Kontakt
-            </Link>
-          </div>
-        </footer>
+        <SiteFooter />
         </div>
       </div>
     </main>

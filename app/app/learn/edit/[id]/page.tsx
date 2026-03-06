@@ -51,6 +51,29 @@ type RefineAction =
   | "increaseDifficulty"
   | "simplifyAnswer"
   | "examOriented";
+type PlanTier = "free" | "premium" | "ultimate";
+type LimitedValue = number | "unlimited";
+type AccountBillingSnapshot = {
+  plan: PlanTier;
+  allPlanLimits: Record<
+    PlanTier,
+    {
+      deckLimit: LimitedValue;
+      questionsPerDeck: LimitedValue;
+      speechSecondsPerDay: LimitedValue;
+      aiRefine: boolean;
+    }
+  >;
+  billing: {
+    planLabels: Record<PlanTier, string>;
+    text: {
+      upgradeCallToAction: {
+        premium: string;
+        ultimate: string;
+      };
+    };
+  };
+};
 
 const CARD_REFINE_OPTIONS: Array<{ action: RefineAction; label: string }> = [
   { action: "expandAnswer", label: "Ausführlicher" },
@@ -60,7 +83,6 @@ const CARD_REFINE_OPTIONS: Array<{ action: RefineAction; label: string }> = [
 ];
 const CARD_DELETE_ANIMATION_MS = 220;
 const MIN_CARD_COUNT = 2;
-const FREE_PLAN_CARD_LIMIT = 10;
 
 type PremiumModalReason = "refine" | "cardLimit";
 const LEARNING_STAGE_OPTIONS: Array<{
@@ -123,16 +145,28 @@ export default function EditDeckPage(): JSX.Element {
   const [premiumModalReason, setPremiumModalReason] = useState<PremiumModalReason>("refine");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [billingSnapshot, setBillingSnapshot] = useState<AccountBillingSnapshot | null>(null);
   const cardElementRefs = useRef<Array<HTMLDivElement | null>>([]);
   const deleteCardTimer = useRef<number | null>(null);
   const saveBarExitTimer = useRef<number | null>(null);
   const allowNavigationRef = useRef(false);
-  const hasPremiumAccess = false;
 
   const deckId = useMemo(() => {
     const raw = params?.id;
     return typeof raw === "string" ? decodeURIComponent(raw) : "";
   }, [params?.id]);
+
+  const numericLimit = (value: LimitedValue | undefined, fallback: number): number => {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+    return fallback;
+  };
+  const userPlan: PlanTier = billingSnapshot?.plan ?? "free";
+  const hasPremiumAccess = userPlan !== "free";
+  const freePlanCardLimit = numericLimit(
+    billingSnapshot?.allPlanLimits.free.questionsPerDeck,
+    MIN_CARD_COUNT
+  );
+  const premiumPlanLabel = billingSnapshot?.billing.planLabels.premium ?? "Upgrade";
 
   const getPhaseMeta = (phase: LearningStageOption) => {
     if (phase === "intro") {
@@ -176,6 +210,28 @@ export default function EditDeckPage(): JSX.Element {
     } catch (progressError) {
       console.error(progressError);
     }
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadBillingSnapshot = async () => {
+      try {
+        const response = await fetch("/api/account/dashboard", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = (await response.json()) as AccountBillingSnapshot;
+        if (!isCancelled) {
+          setBillingSnapshot(payload);
+        }
+      } catch {
+        // Ignore billing snapshot failures and keep conservative defaults.
+      }
+    };
+
+    void loadBillingSnapshot();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -227,7 +283,7 @@ export default function EditDeckPage(): JSX.Element {
 
   const handleAddCard = () => {
     if (deletingCardIndex !== null) return;
-    if (!hasPremiumAccess && cards.length >= FREE_PLAN_CARD_LIMIT) {
+    if (!hasPremiumAccess && cards.length >= freePlanCardLimit) {
       setPremiumModalReason("cardLimit");
       setShowPremiumModal(true);
       return;
@@ -739,13 +795,13 @@ export default function EditDeckPage(): JSX.Element {
             <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-lg">
               <h3 className="text-base font-semibold text-foreground">
                 {premiumModalReason === "cardLimit"
-                  ? "Mehr Fragen mit Premium"
-                  : "Antworten verfeinern mit Premium"}
+                  ? `Mehr Fragen mit ${premiumPlanLabel}`
+                  : `Antworten verfeinern mit ${premiumPlanLabel}`}
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 {premiumModalReason === "cardLimit"
-                  ? "Mit Premium kannst du mehr als 10 Fragen pro Lernset anlegen."
-                  : "Mit Premium kannst du Fragen und Antworten direkt per KI verbessern."}
+                  ? `Mit ${premiumPlanLabel} kannst du mehr als ${freePlanCardLimit} Fragen pro Lernset anlegen.`
+                  : `Mit ${premiumPlanLabel} kannst du Fragen und Antworten direkt per KI verbessern.`}
               </p>
               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <Button variant="outline" onClick={() => setShowPremiumModal(false)}>
@@ -1063,7 +1119,7 @@ export default function EditDeckPage(): JSX.Element {
                             {refineLoading?.index === index ? "Verbessere…" : "Verbessern"}
                             <img
                               src="/icons/premium-crown.svg"
-                              alt="Premium"
+                              alt={premiumPlanLabel}
                               width={14}
                               height={14}
                               className="h-3.5 w-3.5"
@@ -1083,7 +1139,7 @@ export default function EditDeckPage(): JSX.Element {
                               Verbessern
                               <img
                                 src="/icons/premium-crown.svg"
-                                alt="Premium"
+                                alt={premiumPlanLabel}
                                 width={14}
                                 height={14}
                                 className="h-3.5 w-3.5"

@@ -1,12 +1,17 @@
 import OpenAI from "openai";
 import pdfParse from "pdf-parse";
 import { loadPrompt, loadRenderedPrompt } from "@/lib/prompt-store";
+import { billing } from "@/src/config/billing";
 
 export const MAX_UPLOAD_MB = 10;
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 const ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md"];
 const MIN_QUESTION_COUNT = 2;
-const MAX_QUESTION_COUNT = 25;
+const PREMIUM_MAX_QUESTIONS =
+  typeof billing.plans.premium.maxQuestionsPerDeck === "number"
+    ? billing.plans.premium.maxQuestionsPerDeck
+    : MIN_QUESTION_COUNT;
+const MAX_QUESTION_COUNT = Math.max(MIN_QUESTION_COUNT, PREMIUM_MAX_QUESTIONS);
 
 export type DifficultyOption = "leicht" | "mittel" | "anspruchsvoll";
 export type StyleOption = "erklaerend" | "pruefungsnah" | "kompakt";

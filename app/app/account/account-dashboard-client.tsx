@@ -8,14 +8,59 @@ import { LoadingButton } from "@/components/ui/loading-button";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { useToast } from "@/components/ui/toast/useToast";
 import { AvatarBadge } from "./parts";
-import {
-  formatLimitedValue,
-  getUsageProgressPercent,
-  type LimitedValue,
-  type PlanTier,
-  type SubscriptionStatus,
-} from "@/lib/account-plans";
 import { cn } from "@/lib/utils";
+
+type LimitedValue = number | "unlimited";
+type PlanTier = "free" | "premium" | "ultimate";
+type SubscriptionStatus = "active" | "cancel_at_period_end" | "past_due";
+type PlanCardConfig = {
+  tier: PlanTier;
+  title: string;
+  monthlyPrice: number;
+  yearlyPrice?: number;
+  features: string[];
+  highlighted?: boolean;
+  badge?: string;
+  note?: string;
+};
+
+type BillingText = {
+  usage: {
+    deckTitle: string;
+    deckTooltip: string;
+    questionTitle: string;
+    questionTooltip: string;
+    speechTitle: string;
+    speechTooltip: string;
+    speechResetPrefix: string;
+  };
+  pricing: {
+    sectionTitle: string;
+    badgeMostPopular: string;
+    fairUseNote: string;
+    yearlyDiscountBadge: string;
+    yearlySavingsLabel: string;
+    cancelAnytime: string;
+    activePlanCta: string;
+    upgradeCta: string;
+    includedCta: string;
+  };
+  upgradeRequired: {
+    decks: string;
+    questions: string;
+    explanationTime: string;
+  };
+  upgradeCallToAction: {
+    premium: string;
+    ultimate: string;
+  };
+  subscription: {
+    cancelled: string;
+    resumed: string;
+    upgraded: string;
+    downgraded: string;
+  };
+};
 
 type DashboardData = {
   plan: PlanTier;
@@ -30,9 +75,24 @@ type DashboardData = {
     speechSecondsPerDay: LimitedValue;
     aiRefine: boolean;
   };
+  allPlanLimits: Record<
+    PlanTier,
+    {
+      deckLimit: LimitedValue;
+      questionsPerDeck: LimitedValue;
+      speechSecondsPerDay: LimitedValue;
+      aiRefine: boolean;
+    }
+  >;
   usage: {
     speechSecondsToday: number;
     decksCreated: number;
+  };
+  billing: {
+    planLabels: Record<PlanTier, string>;
+    planOrder: Record<PlanTier, number>;
+    pricingCards: PlanCardConfig[];
+    text: BillingText;
   };
 };
 
@@ -48,7 +108,6 @@ type DangerActionKind = "reset_progress" | "delete_decks" | "delete_account";
 type BillingCycle = "monthly" | "yearly";
 
 type PendingAction =
-  | { kind: "upgrade"; target: UpgradeTarget }
   | { kind: "portal" }
   | { kind: "subscription_cancel" }
   | { kind: "danger"; action: DangerActionKind }
@@ -59,16 +118,6 @@ type ModalCopy = {
   description: string;
   confirmLabel: string;
   intent: "default" | "danger";
-};
-
-type PlanCardConfig = {
-  tier: PlanTier;
-  title: string;
-  monthlyPrice: number;
-  features: string[];
-  highlighted?: boolean;
-  badge?: string;
-  note?: string;
 };
 
 function parseHashSection(hash: string): SectionId | null {
@@ -83,54 +132,6 @@ const SETTINGS_NAV: Array<{ id: SectionId; label: string; mobileLabel: string }>
   { id: "usage", label: "Nutzung", mobileLabel: "Nutzung" },
   { id: "abo", label: "Abo", mobileLabel: "Abo" },
   { id: "danger-zone", label: "Danger Zone", mobileLabel: "Danger" },
-];
-
-const PLAN_ORDER: Record<PlanTier, number> = {
-  free: 0,
-  premium: 1,
-  ultimate: 2,
-};
-
-const PLAN_CARDS: PlanCardConfig[] = [
-  {
-    tier: "free",
-    title: "Kostenlos",
-    monthlyPrice: 0,
-    features: [
-      "3 Lernsets insgesamt",
-      "max. 10 Fragen pro Lernset",
-      "300 Sekunden Erklärungszeit pro Tag",
-      "AI Feedback auf deine Antworten",
-    ],
-  },
-  {
-    tier: "premium",
-    title: "Premium",
-    monthlyPrice: 9,
-    highlighted: true,
-    badge: "Beliebtester Plan",
-    features: [
-      "Unlimitierte Lernsets",
-      "Bis zu 25 Fragen pro Lernset",
-      "30 Minuten Erklärungszeit pro Tag",
-      "AI Feedback auf deine Antworten",
-      "Fragen mit AI verbessern",
-    ],
-  },
-  {
-    tier: "ultimate",
-    title: "Ultimate",
-    monthlyPrice: 15,
-    features: [
-      "Unlimitierte Lernsets",
-      "Bis zu 50 Fragen pro Lernset",
-      "Unlimitierte Erklärungszeit*",
-      "AI Feedback auf deine Antworten",
-      "Fragen mit AI verbessern",
-      "Priority AI Verarbeitung",
-    ],
-    note: "*Fair Use Policy",
-  },
 ];
 
 const MOBILE_TABS_TOP_OFFSET = 72;
@@ -169,23 +170,24 @@ function formatCountdownToMidnight(now: Date): string {
 }
 
 function progressForLimited(used: number, cap: LimitedValue): number {
-  return getUsageProgressPercent(used, cap);
+  if (cap === "unlimited") return 0;
+  if (cap <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((used / cap) * 100)));
 }
 
-function getModalCopy(action: PendingAction, options?: { nextBillingDate?: string | null }): ModalCopy {
+function formatLimitedValue(value: LimitedValue): string {
+  if (value === "unlimited") return "∞";
+  return String(value);
+}
+
+function getModalCopy(
+  action: PendingAction,
+  options?: { nextBillingDate?: string | null; planLabels?: Record<PlanTier, string> }
+): ModalCopy {
   if (!action) {
     return {
       title: "Bist du sicher?",
       description: "Diese Aktion kann nicht rückgängig gemacht werden.",
-      confirmLabel: "Bestätigen",
-      intent: "default",
-    };
-  }
-
-  if (action.kind === "upgrade") {
-    return {
-      title: "Upgrade bestätigen",
-      description: `Du wirst zur Upgrade-Seite für ${action.target === "premium" ? "Premium" : "Ultimate"} weitergeleitet.`,
       confirmLabel: "Bestätigen",
       intent: "default",
     };
@@ -202,10 +204,14 @@ function getModalCopy(action: PendingAction, options?: { nextBillingDate?: strin
 
   if (action.kind === "subscription_cancel") {
     const endDate = options?.nextBillingDate ?? "Ende der Laufzeit";
+    const freeLabel = options?.planLabels?.free;
+    const downgradeText = freeLabel
+      ? `Danach wechselst du automatisch zum Plan ${freeLabel}.`
+      : "Danach wechselst du automatisch zum kostenlosen Plan.";
     return {
       title: "Abo kündigen",
       description:
-        `Möchtest du dein Abo wirklich kündigen?\n\nDein Zugang bleibt bis zum ${endDate} aktiv.\n\nDanach wechselst du automatisch zum kostenlosen Plan.`,
+        `Möchtest du dein Abo wirklich kündigen?\n\nDein Zugang bleibt bis zum ${endDate} aktiv.\n\n${downgradeText}`,
       confirmLabel: "Abo kündigen",
       intent: "danger",
     };
@@ -250,6 +256,7 @@ export function AccountDashboardClient({
 
   const [activeSection, setActiveSection] = useState<SectionId>("usage");
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [isRunningDangerAction, setIsRunningDangerAction] = useState(false);
   const [isUpdatingSubscription, setIsUpdatingSubscription] = useState(false);
@@ -505,10 +512,16 @@ export function AccountDashboardClient({
         }
 
         if (action === "cancel") {
-          toast.success("Abo gekündigt", "Dein Zugang bleibt bis zum Ende der Laufzeit aktiv.");
+          toast.success(
+            "Abo gekündigt",
+            dashboard?.billing.text.subscription.cancelled ?? "Abo wurde gekündigt."
+          );
           setPendingAction(null);
         } else {
-          toast.success("Kündigung rückgängig gemacht", "Dein Abo läuft normal weiter.");
+          toast.success(
+            "Kündigung rückgängig gemacht",
+            dashboard?.billing.text.subscription.resumed ?? "Abo läuft weiter."
+          );
         }
 
         await loadDashboard();
@@ -521,18 +534,48 @@ export function AccountDashboardClient({
         setIsUpdatingSubscription(false);
       }
     },
-    [loadDashboard, toast]
+    [dashboard?.billing.text.subscription.cancelled, dashboard?.billing.text.subscription.resumed, loadDashboard, toast]
+  );
+
+  const startCheckout = useCallback(
+    async (target: UpgradeTarget) => {
+      setIsCreatingCheckout(true);
+      try {
+        const response = await fetch("/api/billing/create-checkout-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            plan: target,
+            cycle: billingCycle,
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error || "Checkout konnte nicht gestartet werden.");
+        }
+
+        const payload = (await response.json()) as { url?: string };
+        const url = String(payload.url ?? "").trim();
+        if (!url) {
+          throw new Error("Checkout URL fehlt.");
+        }
+
+        window.location.assign(url);
+      } catch (error) {
+        toast.error(
+          "Checkout fehlgeschlagen",
+          error instanceof Error ? error.message : "Bitte später erneut versuchen."
+        );
+      } finally {
+        setIsCreatingCheckout(false);
+      }
+    },
+    [billingCycle, toast]
   );
 
   const handleConfirmAction = async () => {
     if (!pendingAction) return;
-
-    if (pendingAction.kind === "upgrade") {
-      const target = pendingAction.target;
-      setPendingAction(null);
-      window.location.assign(`/pricing?plan=${target}&billing=${billingCycle}`);
-      return;
-    }
 
     if (pendingAction.kind === "portal") {
       setPendingAction(null);
@@ -565,18 +608,23 @@ export function AccountDashboardClient({
   const statusDate = formatGermanDate(dashboard?.currentPeriodEnd ?? null);
   const nextBillingDate = formatGermanDate(dashboard?.nextBillingAt ?? null);
   const billingInterval = dashboard?.billingInterval ?? null;
+  const billingConfig = dashboard?.billing;
+  const billingText = billingConfig?.text;
+  const planLabels = billingConfig?.planLabels;
+  const planOrder = billingConfig?.planOrder;
+  const planCards = billingConfig?.pricingCards ?? [];
 
-  const deckLimit = dashboard?.limits.deckLimit ?? 3;
+  const deckLimit = dashboard?.limits.deckLimit ?? 0;
   const decksCreated = dashboard?.usage.decksCreated ?? 0;
 
-  const speechCap = dashboard?.limits.speechSecondsPerDay ?? 300;
+  const speechCap = dashboard?.limits.speechSecondsPerDay ?? 0;
   const speechUsed = dashboard?.usage.speechSecondsToday ?? 0;
   const hasReachedDeckLimit =
-    plan === "free" && typeof deckLimit === "number" && decksCreated >= deckLimit;
+    Boolean(dashboard) && plan === "free" && typeof deckLimit === "number" && decksCreated >= deckLimit;
   const hasReachedSpeechLimit =
-    plan === "free" && typeof speechCap === "number" && speechUsed >= speechCap;
+    Boolean(dashboard) && plan === "free" && typeof speechCap === "number" && speechUsed >= speechCap;
 
-  const currentPlanLabel = plan === "free" ? "Kostenlos" : plan === "premium" ? "Premium" : "Ultimate";
+  const currentPlanLabel = planLabels?.[plan] ?? plan;
   const billingLabel = billingInterval === "yearly" ? "Jährlich" : billingInterval === "monthly" ? "Monatlich" : "-";
   const isFreePlan = plan === "free";
   const isCancelAtPeriodEnd = status === "cancel_at_period_end";
@@ -584,8 +632,8 @@ export function AccountDashboardClient({
   const hasPaymentIssue = status === "past_due";
 
   const modalCopy = useMemo(
-    () => (pendingAction ? getModalCopy(pendingAction, { nextBillingDate }) : null),
-    [nextBillingDate, pendingAction]
+    () => (pendingAction ? getModalCopy(pendingAction, { nextBillingDate, planLabels }) : null),
+    [nextBillingDate, pendingAction, planLabels]
   );
 
   const isModalBusy =
@@ -697,36 +745,38 @@ export function AccountDashboardClient({
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <UsageMetricCard
-                    title="Lernsets erstellt"
-                    tooltip="Maximale Anzahl an Lernsets in deinem Account."
+                    title={billingText?.usage.deckTitle ?? ""}
+                    tooltip={billingText?.usage.deckTooltip}
                     current={String(decksCreated)}
                     limit={formatLimitedValue(deckLimit)}
                     progress={progressForLimited(decksCreated, deckLimit)}
                     limitReached={hasReachedDeckLimit}
-                    limitReachedHint={plan === "free" ? "Upgrade auf Premium für unlimitierte Lernsets." : undefined}
+                    limitReachedHint={plan === "free" ? billingText?.upgradeCallToAction.premium : undefined}
                     hideLimitStatusLabel
                   />
                   <QuestionsPerDeckCapabilityCard
-                    title="Fragen pro Lernset"
-                    tooltip="Maximale Anzahl an Fragen innerhalb eines Lernsets."
+                    title={billingText?.usage.questionTitle ?? ""}
+                    tooltip={billingText?.usage.questionTooltip}
                     plan={plan}
+                    planLabels={planLabels}
+                    allPlanLimits={dashboard?.allPlanLimits}
                   />
                   <UsageMetricCard
-                    title="Erklärungszeit (Audio)"
-                    tooltip="Zeit für mündliche Antworten auf Fragen. Deine Antwort wird transkribiert und von der AI bewertet."
+                    title={billingText?.usage.speechTitle ?? ""}
+                    tooltip={billingText?.usage.speechTooltip}
                     current={String(speechUsed)}
                     limit={formatLimitedValue(speechCap)}
                     progress={progressForLimited(speechUsed, speechCap)}
-                    helper={`Zurückgesetzt in ${speechResetCountdown}`}
+                    helper={`${billingText?.usage.speechResetPrefix ?? ""} ${speechResetCountdown}`.trim()}
                     limitReached={hasReachedSpeechLimit}
-                    limitReachedHint={plan === "free" ? "Upgrade auf Premium für mehr Lernzeit." : undefined}
+                    limitReachedHint={plan === "free" ? billingText?.upgradeCallToAction.premium : undefined}
                   />
                 </div>
               </>
             )}
           </SettingsSection>
 
-          <SettingsSection id="abo" title="Abo" className="mt-7">
+          <SettingsSection id="abo" title={billingText?.pricing.sectionTitle ?? ""} className="mt-7">
             {isLoadingDashboard && !dashboard ? (
               <SubscriptionSkeleton />
             ) : (
@@ -800,7 +850,7 @@ export function AccountDashboardClient({
                       className={cn(
                         "inline-flex items-center rounded-full px-4 py-1.5 text-[14px] font-medium transition-all duration-200 ease-out",
                         billingCycle === "monthly"
-                          ? "bg-[var(--color-accent)] text-black"
+                          ? "bg-muted text-foreground"
                           : "text-muted-foreground opacity-70 hover:text-foreground hover:opacity-100"
                       )}
                     >
@@ -812,29 +862,37 @@ export function AccountDashboardClient({
                       className={cn(
                         "inline-flex items-center rounded-full px-4 py-1.5 text-[14px] font-medium transition-all duration-200 ease-out",
                         billingCycle === "yearly"
-                          ? "bg-[var(--color-accent)] text-black"
+                          ? "bg-muted text-foreground"
                           : "text-muted-foreground opacity-70 hover:text-foreground hover:opacity-100"
                       )}
                     >
                       <span>Jährlich</span>
                       <span className="ml-[6px] rounded-[6px] bg-[var(--color-accent)] px-[6px] py-[2px] text-[11px] leading-none text-black">
-                        -20%
+                        {billingText?.pricing.yearlyDiscountBadge ?? ""}
                       </span>
                     </button>
                   </div>
                 </div>
 
                 <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
-                  {PLAN_CARDS.map((card) => {
+                  {planCards.map((card) => {
                     const isCurrentPlan = card.tier === plan;
-                    const isUpgradePath = PLAN_ORDER[card.tier] > PLAN_ORDER[plan];
+                    const isUpgradePath =
+                      (planOrder?.[card.tier] ?? 0) > (planOrder?.[plan] ?? 0);
                     const canUpgradeToCard = card.tier !== "free" && isUpgradePath;
+                    const annualPrice =
+                      billingCycle === "yearly"
+                        ? card.yearlyPrice ?? card.monthlyPrice * 12 * 0.8
+                        : card.monthlyPrice * 12;
                     const effectiveMonthlyPrice =
-                      billingCycle === "yearly" ? card.monthlyPrice * 0.8 : card.monthlyPrice;
-                    const annualPrice = effectiveMonthlyPrice * 12;
+                      billingCycle === "yearly" ? annualPrice / 12 : card.monthlyPrice;
 
-                    const ctaLabel = isCurrentPlan ? "Aktueller Plan" : canUpgradeToCard ? "Upgrade" : "Inklusive";
-                    const ctaDisabled = !canUpgradeToCard;
+                    const ctaLabel = isCurrentPlan
+                      ? (billingText?.pricing.activePlanCta ?? "")
+                      : canUpgradeToCard
+                        ? (billingText?.pricing.upgradeCta ?? "")
+                        : (billingText?.pricing.includedCta ?? "");
+                    const ctaDisabled = !canUpgradeToCard || isCreatingCheckout;
 
                     return (
                       <article
@@ -862,7 +920,7 @@ export function AccountDashboardClient({
                         </p>
                         {billingCycle === "yearly" && card.tier !== "free" && (
                           <p className="mt-1 text-xs text-muted-foreground/80">
-                            {formatEuroPrice(annualPrice)} € / Jahr · 20% Rabatt
+                            {formatEuroPrice(annualPrice)} € / Jahr · {billingText?.pricing.yearlySavingsLabel ?? ""}
                           </p>
                         )}
 
@@ -882,7 +940,7 @@ export function AccountDashboardClient({
                             variant={ctaDisabled ? "outline" : "default"}
                             onClick={() => {
                               if (!canUpgradeToCard) return;
-                              setPendingAction({ kind: "upgrade", target: card.tier as UpgradeTarget });
+                              void startCheckout(card.tier as UpgradeTarget);
                             }}
                             disabled={ctaDisabled}
                           >
@@ -894,7 +952,7 @@ export function AccountDashboardClient({
                               canUpgradeToCard ? "text-muted-foreground/70" : "invisible"
                             )}
                           >
-                            Jederzeit kündbar.
+                            {billingText?.pricing.cancelAnytime ?? ""}
                           </p>
                         </div>
                       </article>
@@ -1104,16 +1162,29 @@ function QuestionsPerDeckCapabilityCard({
   title,
   tooltip,
   plan,
+  planLabels,
+  allPlanLimits,
 }: {
   title: string;
   tooltip?: string;
   plan: PlanTier;
+  planLabels?: Record<PlanTier, string>;
+  allPlanLimits?: Record<
+    PlanTier,
+    {
+      deckLimit: LimitedValue;
+      questionsPerDeck: LimitedValue;
+      speechSecondsPerDay: LimitedValue;
+      aiRefine: boolean;
+    }
+  >;
 }): JSX.Element {
-  const planLimits: Array<{ tier: PlanTier; label: string; value: string }> = [
-    { tier: "free", label: "Kostenlos", value: "10" },
-    { tier: "premium", label: "Premium", value: "25" },
-    { tier: "ultimate", label: "Ultimate", value: "50" },
-  ];
+  const orderedPlans: PlanTier[] = ["free", "premium", "ultimate"];
+  const planLimits: Array<{ tier: PlanTier; label: string; value: string }> = orderedPlans.map((tier) => ({
+    tier,
+    label: planLabels?.[tier] ?? tier,
+    value: formatLimitedValue(allPlanLimits?.[tier]?.questionsPerDeck ?? "unlimited"),
+  }));
 
   return (
     <article className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4">

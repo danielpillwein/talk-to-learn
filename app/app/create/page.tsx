@@ -25,6 +25,7 @@ type CardDraft = {
 type SaveDraftPayload = {
   title: string;
   cards: CardDraft[];
+  fileName?: string;
 };
 
 type DifficultyOption = "leicht" | "mittel" | "anspruchsvoll";
@@ -75,6 +76,35 @@ type GenerateResponse = {
   };
 };
 
+type PlanTier = "free" | "premium" | "ultimate";
+type LimitedValue = number | "unlimited";
+type AccountBillingSnapshot = {
+  plan: PlanTier;
+  allPlanLimits: Record<
+    PlanTier,
+    {
+      deckLimit: LimitedValue;
+      questionsPerDeck: LimitedValue;
+      speechSecondsPerDay: LimitedValue;
+      aiRefine: boolean;
+    }
+  >;
+  billing: {
+    planLabels: Record<PlanTier, string>;
+    text: {
+      upgradeRequired: {
+        decks: string;
+        questions: string;
+        explanationTime: string;
+      };
+      upgradeCallToAction: {
+        premium: string;
+        ultimate: string;
+      };
+    };
+  };
+};
+
 const SAVE_DRAFT_KEY = "ttl:create-deck-draft";
 const WORKING_DRAFT_KEY = "ttl:create-deck-working-draft";
 const HERO_UPLOAD_SESSION_KEY = "ttl:hero-upload";
@@ -114,11 +144,8 @@ const DIFFICULTY_HINTS: Record<DifficultyOption, string> = {
   anspruchsvoll: "Höhere Denktiefe mit komplexeren Fragen und präziserer Formulierung.",
 };
 const MIN_QUESTION_COUNT = 2;
-const FREE_PLAN_QUESTION_LIMIT = 10;
-const MAX_QUESTION_COUNT = 25;
 const MIN_CARD_COUNT = 2;
-const MAX_CARD_COUNT = 25;
-const PREMIUM_BOUNDARY_VALUE = FREE_PLAN_QUESTION_LIMIT + 0.5;
+const DEFAULT_MAX_QUESTION_COUNT = 100;
 const QUESTION_COUNT_SCRUB_STEP_PX = 12;
 const CARD_DELETE_ANIMATION_MS = 220;
 const CARD_FEEDBACK_HIGHLIGHT_MS = 1600;
@@ -154,12 +181,12 @@ function styleFromLearningGoal(goal: LearningGoalOption): ApiStyleOption {
   return goal === "anwenden" ? "pruefungsnah" : "erklaerend";
 }
 
-function normalizeCount(value: unknown): QuestionCount {
+function normalizeCount(value: unknown, maxQuestionCount = DEFAULT_MAX_QUESTION_COUNT): QuestionCount {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 10;
+  if (!Number.isFinite(numeric)) return MIN_QUESTION_COUNT;
   const rounded = Math.round(numeric);
   if (rounded < MIN_QUESTION_COUNT) return MIN_QUESTION_COUNT;
-  if (rounded > MAX_QUESTION_COUNT) return MAX_QUESTION_COUNT;
+  if (rounded > maxQuestionCount) return maxQuestionCount;
   return rounded;
 }
 
@@ -450,8 +477,8 @@ export default function CreateDeckPage(): JSX.Element {
   const [title, setTitle] = useState("");
   const [learningGoal, setLearningGoal] = useState<LearningGoalOption>("verstehen");
   const [difficulty, setDifficulty] = useState<DifficultyOption>("mittel");
-  const [questionCount, setQuestionCount] = useState<QuestionCount>(10);
-  const [questionCountInput, setQuestionCountInput] = useState("10");
+  const [questionCount, setQuestionCount] = useState<QuestionCount>(MIN_QUESTION_COUNT);
+  const [questionCountInput, setQuestionCountInput] = useState(String(MIN_QUESTION_COUNT));
   const [topicFocus, setTopicFocus] = useState("");
   const [detectedTopics, setDetectedTopics] = useState<string[]>([]);
   const [focusOpen, setFocusOpen] = useState(false);
@@ -478,17 +505,34 @@ export default function CreateDeckPage(): JSX.Element {
   const [pendingLeaveHref, setPendingLeaveHref] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<FlowStepId>(1);
   const [isDraftHydrated, setIsDraftHydrated] = useState(false);
+  const [billingSnapshot, setBillingSnapshot] = useState<AccountBillingSnapshot | null>(null);
 
-  const hasPremiumAccess = false;
-  const userPlan: "free" | "premium" = hasPremiumAccess ? "premium" : "free";
-  const isPremiumRequired = questionCount > FREE_PLAN_QUESTION_LIMIT && userPlan === "free";
-  const freePlanCardLimit = FREE_PLAN_QUESTION_LIMIT;
+  const numericLimit = (value: LimitedValue | undefined, fallback: number): number => {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+    return fallback;
+  };
+  const freePlanCardLimitRaw = numericLimit(
+    billingSnapshot?.allPlanLimits.free.questionsPerDeck,
+    MIN_QUESTION_COUNT
+  );
+  const premiumPlanQuestionLimitRaw = numericLimit(
+    billingSnapshot?.allPlanLimits.premium.questionsPerDeck,
+    freePlanCardLimitRaw
+  );
+  const maxQuestionCount = Math.max(MIN_QUESTION_COUNT, premiumPlanQuestionLimitRaw);
+  const freePlanCardLimit = Math.min(Math.max(MIN_QUESTION_COUNT, freePlanCardLimitRaw), maxQuestionCount);
+  const maxCardCount = maxQuestionCount;
+  const premiumBoundaryValue = Math.min(maxQuestionCount, freePlanCardLimit + 0.5);
+  const userPlan: PlanTier = billingSnapshot?.plan ?? "free";
+  const premiumPlanLabel = billingSnapshot?.billing.planLabels.premium ?? "Upgrade";
+  const isPremiumRequired = questionCount > freePlanCardLimit && userPlan === "free";
+  const questionRange = Math.max(1, maxQuestionCount - MIN_QUESTION_COUNT);
   const premiumBoundaryPercent =
-    ((PREMIUM_BOUNDARY_VALUE - MIN_QUESTION_COUNT) / (MAX_QUESTION_COUNT - MIN_QUESTION_COUNT)) * 100;
+    ((premiumBoundaryValue - MIN_QUESTION_COUNT) / questionRange) * 100;
   const questionCountPercent =
-    ((questionCount - MIN_QUESTION_COUNT) / (MAX_QUESTION_COUNT - MIN_QUESTION_COUNT)) * 100;
+    ((questionCount - MIN_QUESTION_COUNT) / questionRange) * 100;
   const sliderTrackBackground =
-    questionCount <= FREE_PLAN_QUESTION_LIMIT
+    questionCount <= freePlanCardLimit
       ? `linear-gradient(to right,
           var(--secondary) 0%,
           var(--secondary) ${questionCountPercent}%,
@@ -523,13 +567,52 @@ export default function CreateDeckPage(): JSX.Element {
   const isStep3Complete = cards.length > 0;
   const isTitleMissing = title.trim().length === 0;
   const isAtMinCardCount = cards.length <= MIN_CARD_COUNT;
-  const isAtMaxCardCount = cards.length >= MAX_CARD_COUNT;
+  const isAtMaxCardCount = cards.length >= maxCardCount;
   const step1Summary = isStep1Complete && fileName ? `Datei: ${fileName}` : undefined;
   const step2Summary =
     cards.length > 0
       ? `Titel: ${title.trim() || "Unbenannt"} · Niveau: ${DIFFICULTY_LABELS[difficulty]} · Stil: ${LEARNING_GOAL_LABELS[learningGoal]}`
       : undefined;
   const hasUnsavedCreateDraft = (analysisReady || cards.length > 0) && !isSaving;
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadBillingSnapshot = async () => {
+      try {
+        const response = await fetch("/api/account/dashboard", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = (await response.json()) as AccountBillingSnapshot;
+        if (!isCancelled) {
+          setBillingSnapshot(payload);
+        }
+      } catch {
+        // Ignore billing snapshot failures and keep conservative defaults.
+      }
+    };
+
+    void loadBillingSnapshot();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const clamped = normalizeCount(questionCount, maxQuestionCount);
+    if (clamped !== questionCount) {
+      setQuestionCount(clamped);
+      setQuestionCountInput(String(clamped));
+    }
+  }, [maxQuestionCount, questionCount]);
+
+  useEffect(() => {
+    if (!billingSnapshot) return;
+    if (questionCount !== MIN_QUESTION_COUNT || questionCountInput !== String(MIN_QUESTION_COUNT)) return;
+
+    const initial = normalizeCount(freePlanCardLimit, maxQuestionCount);
+    setQuestionCount(initial);
+    setQuestionCountInput(String(initial));
+  }, [billingSnapshot, freePlanCardLimit, maxQuestionCount, questionCount, questionCountInput]);
 
   const goToStep = (nextStep: FlowStepId) => {
     setActiveStep(nextStep);
@@ -596,7 +679,7 @@ export default function CreateDeckPage(): JSX.Element {
 
   const setQuestionCountWithHint = (nextValue: unknown) => {
     setQuestionCount((prev) => {
-      const next = normalizeCount(nextValue);
+      const next = normalizeCount(nextValue, maxQuestionCount);
       return next;
     });
   };
@@ -609,9 +692,9 @@ export default function CreateDeckPage(): JSX.Element {
       setQuestionCountWithHint(MIN_QUESTION_COUNT);
       return;
     }
-    if (value && Number.isFinite(numeric) && numeric > MAX_QUESTION_COUNT) {
-      setQuestionCountInput(String(MAX_QUESTION_COUNT));
-      setQuestionCountWithHint(MAX_QUESTION_COUNT);
+    if (value && Number.isFinite(numeric) && numeric > maxQuestionCount) {
+      setQuestionCountInput(String(maxQuestionCount));
+      setQuestionCountWithHint(maxQuestionCount);
       return;
     }
     setQuestionCountInput(value);
@@ -624,7 +707,7 @@ export default function CreateDeckPage(): JSX.Element {
       setQuestionCountInput(String(questionCount));
       return;
     }
-    const normalized = normalizeCount(questionCountInput);
+    const normalized = normalizeCount(questionCountInput, maxQuestionCount);
     setQuestionCountWithHint(normalized);
     setQuestionCountInput(String(normalized));
   };
@@ -663,7 +746,7 @@ export default function CreateDeckPage(): JSX.Element {
       setIsScrubbingQuestionCount(true);
       event.currentTarget.blur();
     }
-    const nextValue = normalizeCount(scrub.startValue + stepDelta);
+    const nextValue = normalizeCount(scrub.startValue + stepDelta, maxQuestionCount);
     setQuestionCountWithHint(nextValue);
     setQuestionCountInput(String(nextValue));
   };
@@ -917,7 +1000,7 @@ export default function CreateDeckPage(): JSX.Element {
       return false;
     }
 
-    const normalizedCount = normalizeCount(questionCountInput || questionCount);
+    const normalizedCount = normalizeCount(questionCountInput || questionCount, maxQuestionCount);
     setQuestionCountWithHint(normalizedCount);
     setQuestionCountInput(String(normalizedCount));
     return true;
@@ -974,7 +1057,7 @@ export default function CreateDeckPage(): JSX.Element {
       return;
     }
     if (isAtMaxCardCount) {
-      toast.info("Maximum erreicht", `Ein Lernset kann maximal ${MAX_CARD_COUNT} Fragen enthalten.`);
+      toast.info("Maximum erreicht", `Ein Lernset kann maximal ${maxCardCount} Fragen enthalten.`);
       return;
     }
     const lastCard = cards[cards.length - 1];
@@ -1169,7 +1252,11 @@ export default function CreateDeckPage(): JSX.Element {
 
       if (!user) {
         toast.info("Login erforderlich", "Zum Speichern bitte kurz anmelden.");
-        saveLoginDraft({ title: finalTitle, cards: cleaned });
+        saveLoginDraft({
+          title: finalTitle,
+          cards: cleaned,
+          fileName: fileName.trim() || undefined,
+        });
         allowNavigationRef.current = true;
         router.push("/auth/sign-in?callbackUrl=/app/create");
         return;
@@ -1181,13 +1268,18 @@ export default function CreateDeckPage(): JSX.Element {
         body: JSON.stringify({
           title: finalTitle,
           cards: cleaned,
+          fileName: fileName.trim() || undefined,
         }),
       });
 
       if (!response.ok) {
         if (response.status === 401) {
           toast.info("Login erforderlich", "Zum Speichern bitte kurz anmelden.");
-          saveLoginDraft({ title: finalTitle, cards: cleaned });
+          saveLoginDraft({
+            title: finalTitle,
+            cards: cleaned,
+            fileName: fileName.trim() || undefined,
+          });
           allowNavigationRef.current = true;
           router.push("/auth/sign-in?callbackUrl=/app/create");
           return;
@@ -1272,7 +1364,8 @@ export default function CreateDeckPage(): JSX.Element {
     setTitle("");
     setLearningGoal("verstehen");
     setDifficulty("mittel");
-    setQuestionCount(10);
+    setQuestionCount(freePlanCardLimit);
+    setQuestionCountInput(String(freePlanCardLimit));
     setRefineLoading(null);
     setIsDeriving(false);
     setIsGenerating(false);
@@ -1287,7 +1380,7 @@ export default function CreateDeckPage(): JSX.Element {
     }
 
     router.replace("/app/create", { scroll: false });
-  }, [forceNewFlow, router]);
+  }, [forceNewFlow, freePlanCardLimit, router]);
 
   useEffect(() => {
     if (forceNewFlow) {
@@ -1397,6 +1490,7 @@ export default function CreateDeckPage(): JSX.Element {
           body: JSON.stringify({
             title: draft.title,
             cards: draft.cards,
+            fileName: draft.fileName,
           }),
         });
 
@@ -1600,9 +1694,9 @@ export default function CreateDeckPage(): JSX.Element {
       {showPremiumModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/25 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-lg">
-            <h3 className="text-base font-semibold text-foreground">Mehr Fragen mit Premium</h3>
+            <h3 className="text-base font-semibold text-foreground">Mehr Fragen mit {premiumPlanLabel}</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Mit Premium kannst du mehr als 10 Fragen pro Lernset generieren.
+              Mit {premiumPlanLabel} kannst du mehr als {freePlanCardLimit} Fragen pro Lernset generieren.
             </p>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button variant="outline" onClick={() => setShowPremiumModal(false)}>
@@ -1786,10 +1880,10 @@ export default function CreateDeckPage(): JSX.Element {
                       title="Tippen oder horizontal ziehen"
                     />
                     <span className="text-sm font-semibold text-foreground">Fragen</span>
-                    {questionCount > FREE_PLAN_QUESTION_LIMIT && (
+                    {questionCount > freePlanCardLimit && (
                       <img
                         src="/icons/premium-crown.svg"
-                        alt="Premium"
+                        alt={premiumPlanLabel}
                         width={16}
                         height={16}
                         className="h-4 w-4 text-primary"
@@ -1804,26 +1898,26 @@ export default function CreateDeckPage(): JSX.Element {
                       <input
                         type="range"
                         min={MIN_QUESTION_COUNT}
-                        max={MAX_QUESTION_COUNT}
+                        max={maxQuestionCount}
                         step={1}
                         value={questionCount}
-                        data-premium={questionCount > FREE_PLAN_QUESTION_LIMIT ? "true" : "false"}
+                        data-premium={questionCount > freePlanCardLimit ? "true" : "false"}
                         onChange={(event) => setQuestionCountWithHint(event.target.value)}
                         className="premium-range relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent"
                         aria-label="Fragenanzahl"
                       />
-                      {questionCount > FREE_PLAN_QUESTION_LIMIT && (
+                      {questionCount > freePlanCardLimit && (
                         <div
                           className="pointer-events-none absolute -top-9 whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground shadow-sm"
                           style={premiumHintPositionStyle}
                         >
-                          Mit Premium-Abo möglich
+                          Mit {premiumPlanLabel}-Abo möglich
                         </div>
                       )}
                     </div>
                     <div className="mt-0.5 flex items-center justify-between text-xs font-medium text-muted-foreground">
                       <span>{MIN_QUESTION_COUNT}</span>
-                      <span>{MAX_QUESTION_COUNT}</span>
+                      <span>{maxQuestionCount}</span>
                     </div>
                   </div>
                 </div>
