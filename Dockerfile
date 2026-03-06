@@ -1,49 +1,41 @@
-# Use Node.js 18 Alpine for smaller image size
-FROM node:18-alpine AS base
+# syntax=docker/dockerfile:1
 
-# Install dependencies only when needed
+FROM node:20-alpine AS base
+ENV NEXT_TELEMETRY_DISABLED=1
+WORKDIR /app
+
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
-WORKDIR /app
-
-# Copy package files
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
 RUN npm ci
 
-# Rebuild the source code only when needed
 FROM base AS builder
-WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
-# Disable telemetry during build
-ENV NEXT_TELEMETRY_DISABLED 1
-
-# Build Next.js application
+RUN npx prisma generate
 RUN npm run build
 
-# Production image, copy all the files and run next
-FROM base AS runner
+FROM node:20-alpine AS runner
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+RUN addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 --ingroup nodejs nextjs
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-
-# Copy necessary files
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/data ./data
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
 
 USER nextjs
 
 EXPOSE 8083
 
-ENV PORT 8083
-ENV HOSTNAME "0.0.0.0"
+ENV PORT=8083
+ENV HOSTNAME=0.0.0.0
 
-# Start the application
 CMD ["node", "server.js"]

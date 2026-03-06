@@ -1,28 +1,44 @@
 # Talk to Learn - Docker Deployment
 
-## Build und Start
+## 1) Vorbereiten
 
 ```bash
-# Build Docker Image
-docker-compose build
+cp .env.example .env
+```
 
-# Start Container
-docker-compose up -d
+Danach in `.env` mindestens die benoetigten Werte setzen (API Keys, Auth, ggf. DB).
 
-# Logs anzeigen
-docker-compose logs -f
+## 2) Build + Start
+
+Empfohlen:
+
+```bash
+./docker.sh up
+```
+
+Alternative ohne Skript:
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+## 3) Betrieb
+
+```bash
+# Logs
+./docker.sh logs
+
+# Neustart mit neuem Build
+./docker.sh restart
 
 # Stoppen
-docker-compose down
+./docker.sh down
 ```
 
-## Wichtig
+## Hinweise
 
-Stelle sicher, dass `.env.local` mit deinem OpenAI API Key und GROQ API Key existiert:
-
-```
-OPENAI_API_KEY=your_api_key_here
-GROQ_API_KEY=your_api_key_here
-```
-
-Die App läuft dann auf http://localhost:8083
+- Die App lauscht im Container auf Port `8083`.
+- Standard-Mapping ist `${PORT:-8083}:8083`.
+- Fuer SQLite wird standardmaessig ein persistentes Volume verwendet (`talk_to_learn_data`),
+  falls `DATABASE_URL` nicht gesetzt ist.
