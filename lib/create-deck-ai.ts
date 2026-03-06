@@ -274,10 +274,12 @@ function detectTopics(text: string): string[] {
     counts.set(word, (counts.get(word) ?? 0) + 1);
   }
 
-  const topics = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([topic]) => topic);
+  const entries: Array<[string, number]> = [];
+  counts.forEach((count, topic) => {
+    entries.push([topic, count]);
+  });
+
+  const topics = entries.sort((a, b) => b[1] - a[1]).slice(0, 6).map(([topic]) => topic);
 
   return topics;
 }
