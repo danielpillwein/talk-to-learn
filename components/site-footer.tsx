@@ -21,14 +21,9 @@ export function SiteFooter({ className }: SiteFooterProps): JSX.Element {
         <Link href="/privacy" className="hover:text-foreground">
           Datenschutz
         </Link>
-        <Link
-          href="https://www.instagram.com/dani.pillwein/"
-          className="hover:text-foreground"
-          target="_blank"
-          rel="noreferrer"
-        >
+        <a href="mailto:daniel@pillwein.at" className="hover:text-foreground">
           Kontakt
-        </Link>
+        </a>
       </div>
     </footer>
   );

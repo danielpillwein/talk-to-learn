@@ -5,6 +5,7 @@ import { HeroUploadCta } from "@/components/hero-upload-cta";
 import { HeroTypewriter } from "@/components/hero-typewriter";
 import { HeroReviewCarousel } from "@/components/hero-review-carousel";
 import { FeaturesBento } from "@/components/landing/FeaturesBento";
+import { HowItWorks } from "@/components/landing/HowItWorks";
 import { HashScrollHandler } from "@/components/landing/hash-scroll-handler";
 import { LandingPricing } from "@/components/landing-pricing";
 import { FaqAccordion } from "@/components/faq/FaqAccordion";
@@ -40,21 +41,6 @@ export default function LandingPage(): JSX.Element {
     "Erklären statt nur Wiederholen",
   ];
 
-  const steps = [
-    {
-      title: "Unterlagen hochladen",
-      text: "Zieh PDFs oder Skripte hinein – Talk-to-Learn liest mit.",
-    },
-    {
-      title: "Frage beantworten – du erklärst per Audio",
-      text: "Laut erklären trainiert echtes Verständnis.",
-    },
-    {
-      title: "Feedback + Musterantwort – sofort",
-      text: "In Sekunden weißt du, was sitzt und was fehlt.",
-    },
-  ];
-
   return (
     <main className="bg-background text-foreground">
       <HashScrollHandler />
@@ -75,8 +61,8 @@ export default function LandingPage(): JSX.Element {
             </span>
           </Link>
           <div className="hidden flex-1 items-center justify-center gap-6 text-sm md:flex">
-            <a href="#produkt" className="text-muted-foreground hover:text-foreground">
-              Produkt
+            <a href="#features" className="text-muted-foreground hover:text-foreground">
+              Features
             </a>
             <a href="#preise" className="text-muted-foreground hover:text-foreground">
               Preise
@@ -104,7 +90,7 @@ export default function LandingPage(): JSX.Element {
 
       <div className="overflow-x-hidden pt-20">
         <div className="mx-auto flex max-w-6xl flex-col gap-16 px-6 py-12 md:gap-24 md:py-20">
-        <header className="grid gap-6 pb-10 md:grid-cols-[minmax(0,1fr)_minmax(0,320px)] md:items-start md:gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+        <header className="grid gap-6 pb-4 md:grid-cols-[minmax(0,1fr)_minmax(0,320px)] md:items-start md:gap-8 md:pb-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
           <div className="order-1 space-y-6 text-center md:order-none md:col-start-1 md:row-start-1 md:pr-6 md:text-left lg:pr-2 lg:text-left">
             <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground shadow-sm">
               <span className="h-2 w-2 rounded-full bg-primary" />
@@ -167,41 +153,9 @@ export default function LandingPage(): JSX.Element {
           </div>
         </header>
 
-        <FeaturesBento />
+        <FeaturesBento className="-mt-6 md:-mt-8" />
 
-        <section className="space-y-8">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-6">
-            <Image
-              src="/mascot/otter-learning.png"
-              alt="Otter beim Lernen"
-              width={714}
-              height={536}
-              sizes="(max-width: 768px) 96px, 112px"
-              className="order-2 h-24 w-auto object-contain -scale-x-100 md:order-none md:h-28 md:scale-x-100"
-            />
-            <div className="order-1 space-y-3 md:order-none">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                So funktioniert&apos;s
-              </p>
-              <h2 className="text-3xl font-semibold">In 3 Schritten bereit.</h2>
-            </div>
-          </div>
-          <div className="relative grid gap-4 md:grid-cols-3">
-            {steps.map((step, index) => (
-              <article
-                key={step.title}
-                className="rounded-3xl border border-border bg-card p-5 shadow-sm transition hover:-translate-y-1 hover:border-foreground/20"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-sm font-semibold text-primary-foreground">
-                  {index + 1}
-                </div>
-                <h3 className="mt-4 text-lg font-semibold">{step.title}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">{step.text}</p>
-                <div className="mt-4 h-20 rounded-2xl border border-dashed border-border bg-secondary/20" />
-              </article>
-            ))}
-          </div>
-        </section>
+        <HowItWorks />
 
         <section id="preise" className="space-y-8">
           <div className="flex items-end justify-between gap-6">
