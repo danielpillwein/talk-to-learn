@@ -18,10 +18,7 @@ export default function PrivacyPage(): JSX.Element {
           <br />
           Mollardgasse 77/1/25
           <br />
-          E-Mail:{" "}
-          <a className="underline hover:text-foreground" href="mailto:daniel@pillwein.at">
-            daniel@pillwein.at
-          </a>
+          E-Mail: daniel@pillwein.at
         </p>
       </section>
 
@@ -91,9 +88,7 @@ export default function PrivacyPage(): JSX.Element {
         <p className="text-sm leading-relaxed text-muted-foreground md:text-base">
           Bei Fragen zum Datenschutz wenden Sie sich an:
           <br />
-          <a className="underline hover:text-foreground" href="mailto:daniel@pillwein.at">
-            daniel@pillwein.at
-          </a>
+          daniel@pillwein.at
         </p>
       </section>
     </LegalPageLayout>

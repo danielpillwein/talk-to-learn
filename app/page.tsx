@@ -1,7 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import type { Metadata } from "next";
-import { HeroUploadCta } from "@/components/hero-upload-cta";
 import { HeroTypewriter } from "@/components/hero-typewriter";
 import { HeroReviewCarousel } from "@/components/hero-review-carousel";
 import { FeaturesBento } from "@/components/landing/FeaturesBento";
@@ -60,30 +59,13 @@ export default function LandingPage(): JSX.Element {
               Talk-to-Learn
             </span>
           </Link>
-          <div className="hidden flex-1 items-center justify-center gap-6 text-sm md:flex">
+          <div className="ml-auto hidden items-center gap-6 text-sm md:flex">
             <a href="#features" className="text-muted-foreground hover:text-foreground">
               Features
             </a>
             <a href="#preise" className="text-muted-foreground hover:text-foreground">
               Preise
             </a>
-            <Link href="/auth/sign-in" className="text-muted-foreground hover:text-foreground">
-              Mit Google anmelden
-            </Link>
-          </div>
-          <div className="ml-auto flex items-center gap-3">
-            <Link
-              href="/auth/sign-in"
-              className="hidden rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:inline-flex"
-            >
-              Kostenlos starten
-            </Link>
-            <Link
-              href="/auth/sign-in"
-              className="rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:hidden"
-            >
-              Starten
-            </Link>
           </div>
         </div>
       </nav>
@@ -142,9 +124,13 @@ export default function LandingPage(): JSX.Element {
           <div className="order-2 pb-6 md:order-none md:col-span-2 md:row-start-2 md:pb-0">
             <div className="grid gap-4 md:grid-cols-2 md:items-stretch">
               <div className="flex h-full flex-col gap-3">
-                <div className="mx-auto w-full max-w-[360px] md:mx-0 md:max-w-none">
-                  <HeroUploadCta />
-                </div>
+                <article className="mx-auto w-full max-w-[360px] rounded-3xl border border-border bg-card p-6 shadow-sm md:mx-0 md:max-w-none">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Coming Soon</p>
+                  <h2 className="mt-3 text-2xl font-semibold">Die Anwendung wird bald released</h2>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    Die öffentliche Version von Talk to Learn ist in Vorbereitung und geht in Kürze live.
+                  </p>
+                </article>
               </div>
               <div className="h-full w-full max-w-sm md:max-w-none">
                 <HeroReviewCarousel />
@@ -175,25 +161,6 @@ export default function LandingPage(): JSX.Element {
 
         <section className="space-y-8">
           <FaqAccordion />
-        </section>
-
-        <section className="rounded-3xl border border-border bg-card p-6 shadow-sm md:p-10">
-          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-3">
-              <h2 className="text-3xl font-semibold">
-                Bereit für deine nächste Prüfung?
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Starte kostenlos und verwandle deine Unterlagen in klare Lernsessions.
-              </p>
-            </div>
-            <Link
-              href="/auth/sign-in"
-              className="rounded-full bg-primary px-6 py-3 text-center text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
-            >
-              Kostenlos starten
-            </Link>
-          </div>
         </section>
 
         <SiteFooter />

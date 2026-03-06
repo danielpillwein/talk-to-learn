@@ -46,12 +46,6 @@ export default function RootLayout({
             `,
           }}
         />
-        {/* Stats */}
-        <script
-          src="https://cloud.umami.is/script.js"
-          data-website-id="45361192-66d0-46ad-ba1e-c55cfdaa9d81"
-          defer
-        />
       </head>
 
       <body className={inter.variable}>

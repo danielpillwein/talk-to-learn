@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -108,19 +107,6 @@ export function LandingPricing({ yearlyDiscountBadge, yearlySavingsLabel, cards 
               </ul>
               {card.note && <p className="mt-1.5 text-xs text-muted-foreground/70">{card.note}</p>}
 
-              <div className="mt-auto pt-5">
-                <Link
-                  href="/auth/sign-in"
-                  className={cn(
-                    "inline-flex w-full items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition",
-                    card.tier === "free"
-                      ? "border border-border text-foreground hover:border-foreground/30"
-                      : "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
-                  )}
-                >
-                  {card.tier === "free" ? "Kostenlos starten" : "Plan wählen"}
-                </Link>
-              </div>
             </article>
           );
         })}

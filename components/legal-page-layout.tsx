@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ThemeSwitchClient } from "@/components/theme-switch";
 import { SiteFooter } from "@/components/site-footer";
 
 type LegalPageLayoutProps = {
@@ -28,12 +27,11 @@ export function LegalPageLayout({ title, children }: LegalPageLayoutProps): JSX.
           </Link>
           <div className="ml-auto flex items-center gap-3">
             <Link
-              href="/auth/sign-in"
+              href="/"
               className="hidden rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 md:inline-flex"
             >
-              Kostenlos starten
+              Zur Startseite
             </Link>
-            <ThemeSwitchClient />
           </div>
         </div>
       </nav>

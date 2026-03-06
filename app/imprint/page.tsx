@@ -21,10 +21,7 @@ export default function ImprintPage(): JSX.Element {
           Österreich
         </p>
         <p className="text-sm leading-relaxed text-muted-foreground md:text-base">
-          E-Mail:{" "}
-          <a className="underline hover:text-foreground" href="mailto:daniel@pillwein.at">
-            daniel@pillwein.at
-          </a>
+          E-Mail: daniel@pillwein.at
         </p>
       </section>
 
@@ -102,11 +99,8 @@ export default function ImprintPage(): JSX.Element {
         <p className="text-sm leading-relaxed text-muted-foreground md:text-base">
           Da es sich um eine digitale Dienstleistung handelt, wird die Leistung unmittelbar nach Kauf bereitgestellt.
           Bereits bezahlte Zeiträume werden grundsätzlich nicht anteilig erstattet, außer es besteht eine zwingende
-          gesetzliche Verpflichtung. Bei fehlerhaften Abbuchungen oder Doppelzahlungen kontaktiere uns bitte unter{" "}
-          <a className="underline hover:text-foreground" href="mailto:daniel@pillwein.at">
-            daniel@pillwein.at
-          </a>
-          .
+          gesetzliche Verpflichtung. Bei fehlerhaften Abbuchungen oder Doppelzahlungen kontaktiere uns bitte unter
+          daniel@pillwein.at.
         </p>
       </section>
 
