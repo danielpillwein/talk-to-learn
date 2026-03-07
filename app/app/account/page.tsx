@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AccountDashboardClient } from "./account-dashboard-client";
+
+export const metadata: Metadata = {
+  title: "Account & Abo – Talk to Learn",
+};
 
 export default async function AccountPage(): Promise<JSX.Element> {
   const session = await auth();

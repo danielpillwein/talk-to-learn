@@ -13,7 +13,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { billing, getPricingCards } from "@/src/config/billing";
 
 export const metadata: Metadata = {
-  title: "Talk to Learn | Sprechbasierte Lernsessions für Studierende",
+  title: "Talk to Learn – Mit KI durch Erklären lernen",
   description:
     "Talk to Learn hilft Studierenden, Lernstoff laut zu trainieren. Kurze Sessions, AI-Feedback, spaced repetition – ideal für Klausurvorbereitung.",
   openGraph: {

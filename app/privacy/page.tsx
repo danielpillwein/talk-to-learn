@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LegalPageLayout } from "@/components/legal-page-layout";
 
 export const metadata: Metadata = {
-  title: "Datenschutzerklärung | Talk to Learn",
+  title: "Datenschutz – Talk to Learn",
   description: "Datenschutzerklärung von Talk to Learn",
 };
 
