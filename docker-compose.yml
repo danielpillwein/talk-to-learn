@@ -5,6 +5,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        BILLING_PREMIUM_PRICE_MONTHLY: ${BILLING_PREMIUM_PRICE_MONTHLY}
+        BILLING_PREMIUM_PRICE_YEARLY: ${BILLING_PREMIUM_PRICE_YEARLY}
+        BILLING_ULTIMATE_PRICE_MONTHLY: ${BILLING_ULTIMATE_PRICE_MONTHLY}
+        BILLING_ULTIMATE_PRICE_YEARLY: ${BILLING_ULTIMATE_PRICE_YEARLY}
     restart: unless-stopped
     ports:
       - "${PORT:-8083}:8083"
