@@ -64,9 +64,9 @@ export function AppHeader(): JSX.Element {
     }
 
     return (
-      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground">
         {user?.name?.charAt(0) ?? (
-          <IconSwap outline={UserIcon} solid={UserIconSolid} className="h-4 w-4" />
+          <UserIconSolid className="h-4 w-4" />
         )}
       </span>
     );

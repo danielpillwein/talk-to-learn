@@ -30,7 +30,7 @@ type SaveDraftPayload = {
 
 type DifficultyOption = "leicht" | "mittel" | "anspruchsvoll";
 type LearningGoalOption = "verstehen" | "anwenden";
-type ApiStyleOption = "kompakt" | "pruefungsnah" | "erklaerend";
+type ApiStyleOption = "kompakt" | "pruefungsnah" | "erklärend";
 type QuestionCount = number;
 type RefineAction =
   | "expandAnswer"
@@ -169,7 +169,7 @@ function isDifficulty(value: unknown): value is DifficultyOption {
 }
 
 function isStyle(value: unknown): value is ApiStyleOption {
-  return value === "kompakt" || value === "pruefungsnah" || value === "erklaerend";
+  return value === "kompakt" || value === "pruefungsnah" || value === "erklärend";
 }
 
 function learningGoalFromStyle(value: unknown): LearningGoalOption {
@@ -178,7 +178,7 @@ function learningGoalFromStyle(value: unknown): LearningGoalOption {
 }
 
 function styleFromLearningGoal(goal: LearningGoalOption): ApiStyleOption {
-  return goal === "anwenden" ? "pruefungsnah" : "erklaerend";
+  return goal === "anwenden" ? "pruefungsnah" : "erklärend";
 }
 
 function normalizeCount(value: unknown, maxQuestionCount = DEFAULT_MAX_QUESTION_COUNT): QuestionCount {

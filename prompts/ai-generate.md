@@ -29,8 +29,8 @@ Kartenqualitaet (didaktischer Vertrag):
 Verbindliche Stilsteuerung (aus DECK_CONTEXT.style):
 - Wenn style = "verstehen":
   - Fokus auf Verstehen: Begriffe, Zusammenhaenge, Ursachen, Unterschiede.
-  - Frageform bevorzugt: "Was ...", "Warum ...", "Wodurch ...", "Erklaere ...".
-  - Antworten erklaeren kurz den Zusammenhang (nicht nur Ergebnis nennen).
+  - Frageform bevorzugt: "Was ...", "Warum ...", "Wodurch ...", "Erkläre ...".
+  - Antworten erklären kurz den Zusammenhang (nicht nur Ergebnis nennen).
   - Formulierung ruhig, lehrbuchnah, ohne Pruefungsfloskeln.
 
 - Wenn style = "anwenden":

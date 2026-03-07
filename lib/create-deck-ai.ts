@@ -14,7 +14,7 @@ const PREMIUM_MAX_QUESTIONS =
 const MAX_QUESTION_COUNT = Math.max(MIN_QUESTION_COUNT, PREMIUM_MAX_QUESTIONS);
 
 export type DifficultyOption = "leicht" | "mittel" | "anspruchsvoll";
-export type StyleOption = "erklaerend" | "pruefungsnah" | "kompakt";
+export type StyleOption = "erklärend" | "pruefungsnah" | "kompakt";
 export type GenerationMode = "default" | "alternate";
 
 export type CardPayload = {
@@ -318,7 +318,7 @@ function deriveStyle(text: string, headingDensity: number): StyleOption {
   );
   const hasTheoryMarkers = /(definition|begriff|satz|lemma|theorem|erklärung|konzept)/i.test(text);
   if (hasExamStructure || headingDensity > 0.12) return "pruefungsnah";
-  if (hasTheoryMarkers) return "erklaerend";
+  if (hasTheoryMarkers) return "erklärend";
   return "kompakt";
 }
 
@@ -335,7 +335,7 @@ function normalizeDifficulty(value: unknown, fallback: DifficultyOption): Diffic
 }
 
 function normalizeStyle(value: unknown, fallback: StyleOption): StyleOption {
-  if (value === "kompakt" || value === "pruefungsnah" || value === "erklaerend") return value;
+  if (value === "kompakt" || value === "pruefungsnah" || value === "erklärend") return value;
   if (value === "pruefung") return "pruefungsnah";
   return fallback;
 }

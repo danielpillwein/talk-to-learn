@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InfoTooltip } from '@/components/ui/info-tooltip';
 import { useToast } from '@/components/ui/toast/useToast';
-import { ArrowPathIcon, ChevronDownIcon, MagnifyingGlassIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, MagnifyingGlassIcon, PencilSquareIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { SpacedRepetitionManager } from '@/lib/spaced-repetition';
 
 interface FileStats {
@@ -230,6 +230,51 @@ function HeroSearch(props: {
                 </div>
             </div>
         </section>
+    );
+}
+
+function LearnDeckListSkeleton(): JSX.Element {
+    return (
+        <div className="fade-in space-y-4">
+            {[0, 1, 2].map((index) => (
+                <div key={index} className="skeleton-card rounded-2xl border border-border bg-card p-5">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div className="min-w-0 flex-1">
+                            <div className={`skeleton skeleton-text ${index === 0 ? 'long' : index === 1 ? 'medium' : 'short'}`} />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="skeleton h-10 w-24 rounded-[999px]" />
+                            <span className="inline-flex h-10 items-center rounded-md border border-border/70 bg-muted/35 px-4 text-sm font-medium text-muted-foreground">
+                                Lernen
+                            </span>
+                            <span className="inline-flex h-10 items-center rounded-md border border-border/70 bg-muted/35 px-4 text-sm font-medium text-muted-foreground">
+                                Bearbeiten
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-3">
+                        <div className="skeleton h-3 flex-1 rounded-full" />
+                        <div className="shrink-0 text-sm text-muted-foreground">
+                            (
+                            <span className="mx-1 inline-flex items-center gap-1">
+                                <span className="h-2 w-2 rounded-full bg-success" />
+                                <span className="skeleton inline-block h-3 w-4 rounded-sm" />
+                            </span>
+                            <span className="mx-1 inline-flex items-center gap-1">
+                                <span className="h-2 w-2 rounded-full bg-warning" />
+                                <span className="skeleton inline-block h-3 w-4 rounded-sm" />
+                            </span>
+                            <span className="mx-1 inline-flex items-center gap-1">
+                                <span className="h-2 w-2 rounded-full bg-muted-foreground" />
+                                <span className="skeleton inline-block h-3 w-4 rounded-sm" />
+                            </span>
+                            )
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
     );
 }
 
@@ -501,14 +546,9 @@ export default function LearnIndexPage(): JSX.Element {
                     />
 
                     {isLoadingFiles ? (
-                        <div className="flex min-h-[50vh] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-card p-10 shadow-sm">
-                            <ArrowPathIcon className="h-6 w-6 animate-spin text-muted-foreground" />
-                            <p className="text-sm text-muted-foreground">
-                                Einen Moment, wir laden gerade deine Lernsets...
-                            </p>
-                        </div>
+                        <LearnDeckListSkeleton />
                     ) : (
-                        <>
+                        <div className="fade-in">
                         {items.length === 0 && (
                             <div className="rounded-3xl border border-border bg-card p-8 text-center text-muted-foreground shadow-sm">
                                 <p className="text-base text-foreground">Du hast noch keine Lernsets.</p>
@@ -659,7 +699,7 @@ export default function LearnIndexPage(): JSX.Element {
                                 </Card>
                             );
                         })}
-                        </>
+                        </div>
                     )}
                 </div>
 

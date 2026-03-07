@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast/useToast";
-import { ArrowPathIcon, ChevronDownIcon, SparklesIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ChevronDownIcon, SparklesIcon, TrashIcon } from "@heroicons/react/24/outline";
 
 const EMPTY_CARD = { question: "", answer: "" };
 
@@ -113,6 +113,98 @@ function areCardsEqual(left: CardDraft[], right: CardDraft[]): boolean {
     if (leftCard.answer !== rightCard.answer) return false;
   }
   return true;
+}
+
+function EditDeckDetailsSkeleton(): JSX.Element {
+  return (
+    <Card className="border-border bg-card shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-lg font-semibold text-foreground">Lernset-Details</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <section className="space-y-3">
+          <label className="text-[13px] text-muted-foreground opacity-70">Titel</label>
+          <div className="skeleton h-11 w-full rounded-xl" />
+        </section>
+
+        <section className="space-y-3">
+          <label className="text-[13px] text-muted-foreground opacity-70">Lernstufe</label>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="skeleton h-10 w-28 rounded-full" />
+            <span className="inline-flex h-9 items-center rounded-md border border-border/70 bg-muted/35 px-3 text-sm text-muted-foreground">
+              Lernstufe ändern
+            </span>
+          </div>
+          <div className="skeleton skeleton-text long" />
+        </section>
+
+        <section className="space-y-3">
+          <label className="text-[13px] text-muted-foreground opacity-70">Fortschritt</label>
+          <div className="flex items-center gap-3">
+            <div className="skeleton h-3 flex-1 rounded-full" />
+            <div className="skeleton h-4 w-24 rounded-md" />
+          </div>
+          <span className="inline-flex h-9 items-center rounded-md border border-border/70 bg-muted/35 px-3 text-sm text-muted-foreground">
+            Fortschritt zurücksetzen
+          </span>
+        </section>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EditDeckCardsSkeleton(): JSX.Element {
+  return (
+    <Card className="border-border bg-card shadow-sm">
+      <CardHeader>
+        <CardTitle className="text-lg font-semibold text-foreground">Fragen bearbeiten</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4">
+          <p className="text-sm text-muted-foreground">Karten</p>
+        </div>
+        <div className="flex flex-col">
+          {[0, 1].map((index) => (
+            <div
+              key={index}
+              className="mb-8 space-y-5 rounded-2xl border border-border bg-card/95 p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_6px_16px_rgba(0,0,0,0.14)] last:mb-0 md:p-5"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border text-xs font-medium text-muted-foreground">
+                  {index + 1}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-8 items-center rounded-md border border-border/70 bg-muted/35 px-3 text-xs text-muted-foreground">
+                    Verbessern
+                  </span>
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/70 bg-muted/35 text-muted-foreground">
+                    <TrashIcon className="h-4 w-4" />
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-medium text-muted-foreground/85">Frage</label>
+                  <div className="skeleton h-10 w-full rounded-xl" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-medium text-muted-foreground/85">Antwort</label>
+                  <div className="skeleton h-24 w-full rounded-xl" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-8">
+          <span className="inline-flex h-9 items-center rounded-md border border-border/70 bg-muted/35 px-3 text-sm text-muted-foreground">
+            Karte hinzufügen
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function EditDeckPage(): JSX.Element {
@@ -882,7 +974,18 @@ export default function EditDeckPage(): JSX.Element {
             </div>
           </div>
         )}
-        <Card className="border-border bg-card shadow-sm">
+        {isLoading ? (
+          <>
+            <div className="fade-in">
+              <EditDeckDetailsSkeleton />
+            </div>
+            <div className="fade-in">
+              <EditDeckCardsSkeleton />
+            </div>
+          </>
+        ) : (
+          <>
+        <Card className="fade-in border-border bg-card shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-foreground">
               Lernset-Details
@@ -1063,13 +1166,7 @@ export default function EditDeckPage(): JSX.Element {
           </CardContent>
         </Card>
 
-        {isLoading ? (
-          <div className="flex min-h-[50vh] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-card p-10 shadow-sm">
-            <ArrowPathIcon className="h-6 w-6 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Einen Moment, wir laden gerade dein Lernset...</p>
-          </div>
-        ) : (
-          <Card className="border-border bg-card shadow-sm">
+          <Card className="fade-in border-border bg-card shadow-sm">
             <CardHeader>
               <CardTitle className="text-lg font-semibold text-foreground">
                 Fragen bearbeiten
@@ -1221,6 +1318,7 @@ export default function EditDeckPage(): JSX.Element {
               </div>
             </CardContent>
           </Card>
+          </>
         )}
 
         {!isLoading && (

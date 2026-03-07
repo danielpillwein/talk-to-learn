@@ -106,6 +106,8 @@ type SectionId = "usage" | "abo" | "danger-zone";
 type UpgradeTarget = "premium" | "ultimate";
 type DangerActionKind = "reset_progress" | "delete_decks" | "delete_account";
 type BillingCycle = "monthly" | "yearly";
+type RevealGroup = "usage" | "subscriptionSummary" | "subscriptionCards";
+type RevealState = Record<RevealGroup, boolean>;
 
 type PendingAction =
   | { kind: "portal" }
@@ -252,7 +254,6 @@ export function AccountDashboardClient({
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
-  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
   const [activeSection, setActiveSection] = useState<SectionId>("usage");
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
@@ -264,7 +265,18 @@ export function AccountDashboardClient({
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [isMobileTabsPinned, setIsMobileTabsPinned] = useState(false);
+  const [revealState, setRevealState] = useState<RevealState>({
+    usage: false,
+    subscriptionSummary: false,
+    subscriptionCards: false,
+  });
+  const revealTimersRef = useRef<number[]>([]);
   const mobileTabsSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const clearRevealTimers = useCallback(() => {
+    revealTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    revealTimersRef.current = [];
+  }, []);
 
   const scrollToSection = useCallback(
     (section: SectionId, behavior: ScrollBehavior): void => {
@@ -292,6 +304,12 @@ export function AccountDashboardClient({
 
   const loadDashboard = useCallback(async () => {
     setIsLoadingDashboard(true);
+    clearRevealTimers();
+    setRevealState({
+      usage: false,
+      subscriptionSummary: false,
+      subscriptionCards: false,
+    });
 
     try {
       const tzOffsetMinutes = new Date().getTimezoneOffset();
@@ -304,19 +322,43 @@ export function AccountDashboardClient({
 
       const payload = (await response.json()) as DashboardData;
       setDashboard(payload);
-      setDashboardError(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Abo-Daten konnten nicht geladen werden.";
-      setDashboardError(message);
+
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (prefersReducedMotion) {
+        setRevealState({
+          usage: true,
+          subscriptionSummary: true,
+          subscriptionCards: true,
+        });
+      } else {
+        revealTimersRef.current.push(
+          window.setTimeout(() => {
+            setRevealState((prev) => ({ ...prev, usage: true }));
+          }, 60),
+          window.setTimeout(() => {
+            setRevealState((prev) => ({ ...prev, subscriptionSummary: true }));
+          }, 180),
+          window.setTimeout(() => {
+            setRevealState((prev) => ({ ...prev, subscriptionCards: true }));
+          }, 320)
+        );
+      }
+    } catch {
       toast.error("Abo-Daten konnten nicht geladen werden", "Bitte erneut versuchen.");
     } finally {
       setIsLoadingDashboard(false);
     }
-  }, [toast]);
+  }, [clearRevealTimers, toast]);
 
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    return () => {
+      clearRevealTimers();
+    };
+  }, [clearRevealTimers]);
 
   useEffect(() => {
     const tick = () => {
@@ -613,6 +655,12 @@ export function AccountDashboardClient({
   const planLabels = billingConfig?.planLabels;
   const planOrder = billingConfig?.planOrder;
   const planCards = billingConfig?.pricingCards ?? [];
+  const hasDashboard = Boolean(dashboard);
+  const showUsageSkeleton = (isLoadingDashboard && !hasDashboard) || (hasDashboard && !revealState.usage);
+  const showSubscriptionSummarySkeleton =
+    (isLoadingDashboard && !hasDashboard) || (hasDashboard && !revealState.subscriptionSummary);
+  const showSubscriptionCardsSkeleton =
+    (isLoadingDashboard && !hasDashboard) || (hasDashboard && !revealState.subscriptionCards);
 
   const deckLimit = dashboard?.limits.deckLimit ?? 0;
   const decksCreated = dashboard?.usage.decksCreated ?? 0;
@@ -735,230 +783,240 @@ export function AccountDashboardClient({
 
         <div className="min-w-0">
           <SettingsSection id="usage" title="Nutzung">
-            {isLoadingDashboard && !dashboard ? (
+            {!dashboard ? (
+              isLoadingDashboard ? (
+                <UsageSkeleton />
+              ) : (
+                <ErrorPanel message="Nutzungsdaten konnten nicht geladen werden." onRetry={() => void loadDashboard()} />
+              )
+            ) : showUsageSkeleton ? (
               <UsageSkeleton />
             ) : (
-              <>
-                {dashboardError && !dashboard && (
-                  <ErrorPanel message="Nutzungsdaten konnten nicht geladen werden." onRetry={() => void loadDashboard()} />
-                )}
-
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  <UsageMetricCard
-                    title={billingText?.usage.deckTitle ?? ""}
-                    tooltip={billingText?.usage.deckTooltip}
-                    current={String(decksCreated)}
-                    limit={formatLimitedValue(deckLimit)}
-                    progress={progressForLimited(decksCreated, deckLimit)}
-                    limitReached={hasReachedDeckLimit}
-                    limitReachedHint={plan === "free" ? billingText?.upgradeCallToAction.premium : undefined}
-                    hideLimitStatusLabel
-                  />
-                  <QuestionsPerDeckCapabilityCard
-                    title={billingText?.usage.questionTitle ?? ""}
-                    tooltip={billingText?.usage.questionTooltip}
-                    plan={plan}
-                    planLabels={planLabels}
-                    allPlanLimits={dashboard?.allPlanLimits}
-                  />
-                  <UsageMetricCard
-                    title={billingText?.usage.speechTitle ?? ""}
-                    tooltip={billingText?.usage.speechTooltip}
-                    current={String(speechUsed)}
-                    limit={formatLimitedValue(speechCap)}
-                    progress={progressForLimited(speechUsed, speechCap)}
-                    helper={`${billingText?.usage.speechResetPrefix ?? ""} ${speechResetCountdown}`.trim()}
-                    limitReached={hasReachedSpeechLimit}
-                    limitReachedHint={plan === "free" ? billingText?.upgradeCallToAction.premium : undefined}
-                  />
-                </div>
-              </>
+              <div className="fade-in grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <UsageMetricCard
+                  title={billingText?.usage.deckTitle ?? ""}
+                  tooltip={billingText?.usage.deckTooltip}
+                  current={String(decksCreated)}
+                  limit={formatLimitedValue(deckLimit)}
+                  progress={progressForLimited(decksCreated, deckLimit)}
+                  limitReached={hasReachedDeckLimit}
+                  limitReachedHint={plan === "free" ? billingText?.upgradeCallToAction.premium : undefined}
+                  hideLimitStatusLabel
+                />
+                <QuestionsPerDeckCapabilityCard
+                  title={billingText?.usage.questionTitle ?? ""}
+                  tooltip={billingText?.usage.questionTooltip}
+                  plan={plan}
+                  planLabels={planLabels}
+                  allPlanLimits={dashboard?.allPlanLimits}
+                />
+                <UsageMetricCard
+                  title={billingText?.usage.speechTitle ?? ""}
+                  tooltip={billingText?.usage.speechTooltip}
+                  current={String(speechUsed)}
+                  limit={formatLimitedValue(speechCap)}
+                  progress={progressForLimited(speechUsed, speechCap)}
+                  helper={`${billingText?.usage.speechResetPrefix ?? ""} ${speechResetCountdown}`.trim()}
+                  limitReached={hasReachedSpeechLimit}
+                  limitReachedHint={plan === "free" ? billingText?.upgradeCallToAction.premium : undefined}
+                />
+              </div>
             )}
           </SettingsSection>
 
           <SettingsSection id="abo" title={billingText?.pricing.sectionTitle ?? ""} className="mt-7">
-            {isLoadingDashboard && !dashboard ? (
-              <SubscriptionSkeleton />
+            {!dashboard ? (
+              isLoadingDashboard ? (
+                <SubscriptionSkeleton />
+              ) : (
+                <ErrorPanel message="Abo-Daten konnten nicht geladen werden." onRetry={() => void loadDashboard()} />
+              )
             ) : (
               <>
-                {dashboardError && !dashboard && (
-                  <ErrorPanel message="Abo-Daten konnten nicht geladen werden." onRetry={() => void loadDashboard()} />
-                )}
-
-                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4 text-sm">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Aktueller Plan</p>
-                      <p className="mt-1 text-sm font-semibold text-foreground">{currentPlanLabel}</p>
-                    </div>
-                    {!isFreePlan && (
+                {showSubscriptionSummarySkeleton ? (
+                  <SubscriptionSummarySkeleton />
+                ) : (
+                  <div className="fade-in rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4 text-sm">
+                    <div className="grid gap-3 sm:grid-cols-3">
                       <div>
-                        <p className="text-xs text-muted-foreground">
-                          {isCancelAtPeriodEnd ? "Abo endet am" : "Nächste Abbuchung"}
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-foreground">
-                          {isCancelAtPeriodEnd ? statusDate ?? "-" : nextBillingDate ?? "-"}
-                        </p>
+                        <p className="text-xs text-muted-foreground">Aktueller Plan</p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">{currentPlanLabel}</p>
                       </div>
-                    )}
-                    {!isFreePlan && (
-                      <div>
-                        <p className="text-xs text-muted-foreground">Abrechnung</p>
-                        <p className="mt-1 text-sm font-semibold text-foreground">{billingLabel}</p>
-                      </div>
-                    )}
-                  </div>
-                  {hasPaymentIssue && (
-                    <p className="mt-3 text-sm text-[var(--color-warning)]">
-                      Zahlung fehlgeschlagen. Bitte Zahlungsmethode prüfen.
-                    </p>
-                  )}
-                  {!isFreePlan && (
-                    <div className="mt-3">
-                      {isPaidActive && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="w-full sm:w-auto"
-                          onClick={() => setPendingAction({ kind: "subscription_cancel" })}
-                          disabled={!dashboard?.canManageSubscription || isUpdatingSubscription}
-                        >
-                          Abo kündigen
-                        </Button>
-                      )}
-                      {isCancelAtPeriodEnd && (
-                        <LoadingButton
-                          variant="outline"
-                          text="Kündigung rückgängig machen"
-                          loadingText="Aktualisiere"
-                          isLoading={isUpdatingSubscription}
-                          onClick={() => void updateSubscriptionCancellation("resume")}
-                          className="w-full sm:w-auto"
-                          disabled={!dashboard?.canManageSubscription || isUpdatingSubscription}
-                        />
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-5 flex items-center justify-between gap-3">
-                  <p className="text-sm text-muted-foreground">Abrechnung</p>
-                  <div className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-card)] p-1">
-                    <button
-                      type="button"
-                      onClick={() => setBillingCycle("monthly")}
-                      className={cn(
-                        "inline-flex items-center rounded-full px-4 py-1.5 text-[14px] font-medium transition-all duration-200 ease-out",
-                        billingCycle === "monthly"
-                          ? "bg-muted text-foreground"
-                          : "text-muted-foreground opacity-70 hover:text-foreground hover:opacity-100"
-                      )}
-                    >
-                      Monatlich
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBillingCycle("yearly")}
-                      className={cn(
-                        "inline-flex items-center rounded-full px-4 py-1.5 text-[14px] font-medium transition-all duration-200 ease-out",
-                        billingCycle === "yearly"
-                          ? "bg-muted text-foreground"
-                          : "text-muted-foreground opacity-70 hover:text-foreground hover:opacity-100"
-                      )}
-                    >
-                      <span>Jährlich</span>
-                      <span className="ml-[6px] rounded-[6px] bg-[var(--color-accent)] px-[6px] py-[2px] text-[11px] leading-none text-black">
-                        {billingText?.pricing.yearlyDiscountBadge ?? ""}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
-                  {planCards.map((card) => {
-                    const isCurrentPlan = card.tier === plan;
-                    const isUpgradePath =
-                      (planOrder?.[card.tier] ?? 0) > (planOrder?.[plan] ?? 0);
-                    const canUpgradeToCard = card.tier !== "free" && isUpgradePath;
-                    const annualPrice =
-                      billingCycle === "yearly"
-                        ? card.yearlyPrice ?? card.monthlyPrice * 12 * 0.8
-                        : card.monthlyPrice * 12;
-                    const effectiveMonthlyPrice =
-                      billingCycle === "yearly" ? annualPrice / 12 : card.monthlyPrice;
-
-                    const ctaLabel = isCurrentPlan
-                      ? (billingText?.pricing.activePlanCta ?? "")
-                      : canUpgradeToCard
-                        ? (billingText?.pricing.upgradeCta ?? "")
-                        : (billingText?.pricing.includedCta ?? "");
-                    const ctaDisabled = !canUpgradeToCard || isCreatingCheckout;
-
-                    return (
-                      <article
-                        key={card.tier}
-                        className={cn(
-                          "relative flex h-full flex-col rounded-xl border bg-[var(--color-card)] p-5",
-                          card.highlighted
-                            ? "border-2 border-[var(--color-accent)]"
-                            : "border-[var(--color-border)]"
-                        )}
-                        style={
-                          card.highlighted
-                            ? { boxShadow: "0 0 20px rgba(var(--color-accent-rgb), 0.25)" }
-                            : undefined
-                        }
-                      >
-                        {card.badge && (
-                          <p className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-md bg-[var(--color-accent)] px-2 py-1 text-[12px] font-semibold text-black">
-                            {card.badge}
+                      {!isFreePlan && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">
+                            {isCancelAtPeriodEnd ? "Abo endet am" : "Nächste Abbuchung"}
                           </p>
-                        )}
-                        <p className="text-sm font-semibold text-foreground">{card.title}</p>
-                        <p className="mt-1 text-xl font-semibold text-foreground">
-                          {formatEuroPrice(effectiveMonthlyPrice)} € / Monat
-                        </p>
-                        {billingCycle === "yearly" && card.tier !== "free" && (
-                          <p className="mt-1 text-xs text-muted-foreground/80">
-                            {formatEuroPrice(annualPrice)} € / Jahr · {billingText?.pricing.yearlySavingsLabel ?? ""}
-                          </p>
-                        )}
-
-                        <ul className="mt-4 space-y-2 text-sm">
-                          {card.features.map((feature) => (
-                            <li key={feature} className="text-muted-foreground">
-                              {feature}
-                            </li>
-                          ))}
-                        </ul>
-                        {card.note && <p className="mt-1.5 text-xs text-muted-foreground/70">{card.note}</p>}
-
-                        <div className="mt-auto pt-5">
-                          <Button
-                            type="button"
-                            className="w-full"
-                            variant={ctaDisabled ? "outline" : "default"}
-                            onClick={() => {
-                              if (!canUpgradeToCard) return;
-                              void startCheckout(card.tier as UpgradeTarget);
-                            }}
-                            disabled={ctaDisabled}
-                          >
-                            {ctaLabel}
-                          </Button>
-                          <p
-                            className={cn(
-                              "mt-1.5 text-center text-xs",
-                              canUpgradeToCard ? "text-muted-foreground/70" : "invisible"
-                            )}
-                          >
-                            {billingText?.pricing.cancelAnytime ?? ""}
+                          <p className="mt-1 text-sm font-semibold text-foreground">
+                            {isCancelAtPeriodEnd ? statusDate ?? "-" : nextBillingDate ?? "-"}
                           </p>
                         </div>
-                      </article>
-                    );
-                  })}
-                </div>
+                      )}
+                      {!isFreePlan && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">Abrechnung</p>
+                          <p className="mt-1 text-sm font-semibold text-foreground">{billingLabel}</p>
+                        </div>
+                      )}
+                    </div>
+                    {hasPaymentIssue && (
+                      <p className="mt-3 text-sm text-[var(--color-warning)]">
+                        Zahlung fehlgeschlagen. Bitte Zahlungsmethode prüfen.
+                      </p>
+                    )}
+                    {!isFreePlan && (
+                      <div className="mt-3">
+                        {isPaidActive && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full sm:w-auto"
+                            onClick={() => setPendingAction({ kind: "subscription_cancel" })}
+                            disabled={!dashboard?.canManageSubscription || isUpdatingSubscription}
+                          >
+                            Abo kündigen
+                          </Button>
+                        )}
+                        {isCancelAtPeriodEnd && (
+                          <LoadingButton
+                            variant="outline"
+                            text="Kündigung rückgängig machen"
+                            loadingText="Aktualisiere"
+                            isLoading={isUpdatingSubscription}
+                            onClick={() => void updateSubscriptionCancellation("resume")}
+                            className="w-full sm:w-auto"
+                            disabled={!dashboard?.canManageSubscription || isUpdatingSubscription}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {showSubscriptionCardsSkeleton ? (
+                  <SubscriptionCardsSkeleton />
+                ) : (
+                  <div className="fade-in">
+                    <div className="mt-5 flex items-center justify-between gap-3">
+                      <p className="text-sm text-muted-foreground">Abrechnung</p>
+                      <div className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-card)] p-1">
+                        <button
+                          type="button"
+                          onClick={() => setBillingCycle("monthly")}
+                          className={cn(
+                            "inline-flex items-center rounded-full px-4 py-1.5 text-[14px] font-medium transition-all duration-200 ease-out",
+                            billingCycle === "monthly"
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground opacity-70 hover:text-foreground hover:opacity-100"
+                          )}
+                        >
+                          Monatlich
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBillingCycle("yearly")}
+                          className={cn(
+                            "inline-flex items-center rounded-full px-4 py-1.5 text-[14px] font-medium transition-all duration-200 ease-out",
+                            billingCycle === "yearly"
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground opacity-70 hover:text-foreground hover:opacity-100"
+                          )}
+                        >
+                          <span>Jährlich</span>
+                          <span className="ml-[6px] rounded-[6px] bg-[var(--color-accent)] px-[6px] py-[2px] text-[11px] leading-none text-black">
+                            {billingText?.pricing.yearlyDiscountBadge ?? ""}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
+                      {planCards.map((card) => {
+                        const isCurrentPlan = card.tier === plan;
+                        const isUpgradePath =
+                          (planOrder?.[card.tier] ?? 0) > (planOrder?.[plan] ?? 0);
+                        const canUpgradeToCard = card.tier !== "free" && isUpgradePath;
+                        const annualPrice =
+                          billingCycle === "yearly"
+                            ? card.yearlyPrice ?? card.monthlyPrice * 12 * 0.8
+                            : card.monthlyPrice * 12;
+                        const effectiveMonthlyPrice =
+                          billingCycle === "yearly" ? annualPrice / 12 : card.monthlyPrice;
+
+                        const ctaLabel = isCurrentPlan
+                          ? (billingText?.pricing.activePlanCta ?? "")
+                          : canUpgradeToCard
+                            ? (billingText?.pricing.upgradeCta ?? "")
+                            : (billingText?.pricing.includedCta ?? "");
+                        const ctaDisabled = !canUpgradeToCard || isCreatingCheckout;
+
+                        return (
+                          <article
+                            key={card.tier}
+                            className={cn(
+                              "relative flex h-full flex-col rounded-xl border bg-[var(--color-card)] p-5",
+                              card.highlighted
+                                ? "border-2 border-[var(--color-accent)]"
+                                : "border-[var(--color-border)]"
+                            )}
+                            style={
+                              card.highlighted
+                                ? { boxShadow: "0 0 20px rgba(var(--color-accent-rgb), 0.25)" }
+                                : undefined
+                            }
+                          >
+                            {card.badge && (
+                              <p className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-md bg-[var(--color-accent)] px-2 py-1 text-[12px] font-semibold text-black">
+                                {card.badge}
+                              </p>
+                            )}
+                            <p className="text-sm font-semibold text-foreground">{card.title}</p>
+                            <p className="mt-1 text-xl font-semibold text-foreground">
+                              {formatEuroPrice(effectiveMonthlyPrice)} € / Monat
+                            </p>
+                            {billingCycle === "yearly" && card.tier !== "free" && (
+                              <p className="mt-1 text-xs text-muted-foreground/80">
+                                {formatEuroPrice(annualPrice)} € / Jahr · {billingText?.pricing.yearlySavingsLabel ?? ""}
+                              </p>
+                            )}
+
+                            <ul className="mt-4 space-y-2 text-sm">
+                              {card.features.map((feature) => (
+                                <li key={feature} className="text-muted-foreground">
+                                  {feature}
+                                </li>
+                              ))}
+                            </ul>
+                            {card.note && <p className="mt-1.5 text-xs text-muted-foreground/70">{card.note}</p>}
+
+                            <div className="mt-auto pt-5">
+                              <Button
+                                type="button"
+                                className="w-full"
+                                variant={ctaDisabled ? "outline" : "default"}
+                                onClick={() => {
+                                  if (!canUpgradeToCard) return;
+                                  void startCheckout(card.tier as UpgradeTarget);
+                                }}
+                                disabled={ctaDisabled}
+                              >
+                                {ctaLabel}
+                              </Button>
+                              <p
+                                className={cn(
+                                  "mt-1.5 text-center text-xs",
+                                  canUpgradeToCard ? "text-muted-foreground/70" : "invisible"
+                                )}
+                              >
+                                {billingText?.pricing.cancelAnytime ?? ""}
+                              </p>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {!isFreePlan && !dashboard?.canManageSubscription && (
                   <p className="mt-4 text-xs text-muted-foreground">
@@ -1056,10 +1114,6 @@ export function AccountDashboardClient({
       )}
     </main>
   );
-}
-
-function renderLimit(value: LimitedValue): string {
-  return value === "unlimited" ? "∞" : String(value);
 }
 
 function SettingsSection({
@@ -1308,15 +1362,83 @@ function DangerActionRow({
 }
 
 function UsageSkeleton(): JSX.Element {
+  const titles = ["Lernsets erstellt", "Fragen pro Lernset", "Erklärungszeit (Audio)"];
+
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {[0, 1, 2].map((index) => (
-        <div key={index} className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4">
-          <div className="h-4 w-1/2 rounded bg-muted" />
-          <div className="h-6 w-2/3 rounded bg-muted" />
-          <div className="h-[6px] w-full rounded-[4px] bg-muted" />
+        <div key={index} className="skeleton-card space-y-3 rounded-lg border border-[var(--color-border)] p-4">
+          <p className="text-sm font-medium text-foreground">{titles[index]}</p>
+          <div className="skeleton h-6 w-2/3 rounded-md" />
+          <div className="skeleton h-[6px] w-full rounded-[4px]" />
+          <div className="mt-2 space-y-2">
+            <div className="text-xs text-muted-foreground">
+              <span className="skeleton inline-block h-3 w-32 align-middle rounded-md" />
+            </div>
+            <div className="text-xs text-muted-foreground">
+              <span className="skeleton inline-block h-3 w-24 align-middle rounded-md" />
+            </div>
+          </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function SubscriptionSummarySkeleton(): JSX.Element {
+  return (
+    <div className="skeleton-card space-y-3 rounded-lg border border-[var(--color-border)] p-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Aktueller Plan</p>
+          <div className="skeleton h-4 w-20 rounded-md" />
+        </div>
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Nächste Abbuchung</p>
+          <div className="skeleton h-4 w-24 rounded-md" />
+        </div>
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Abrechnung</p>
+          <div className="skeleton h-4 w-20 rounded-md" />
+        </div>
+      </div>
+      <div className="inline-flex h-10 items-center rounded-lg border border-[var(--color-border)] px-4 text-sm text-muted-foreground">
+        Abo kündigen
+      </div>
+    </div>
+  );
+}
+
+function SubscriptionCardsSkeleton(): JSX.Element {
+  return (
+    <div className="mt-5 space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">Abrechnung</p>
+        <div className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-card)] p-1">
+          <span className="inline-flex items-center rounded-full px-4 py-1.5 text-[14px] font-medium text-muted-foreground">
+            Monatlich
+          </span>
+          <span className="inline-flex items-center rounded-full px-4 py-1.5 text-[14px] font-medium text-muted-foreground">
+            Jährlich
+          </span>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {["Kostenlos", "Premium", "Ultimate"].map((label) => (
+          <div key={label} className="skeleton-card space-y-3 rounded-xl border border-[var(--color-border)] p-5">
+            <p className="text-sm font-semibold text-foreground">{label}</p>
+            <div className="skeleton h-7 w-1/2 rounded-md" />
+            <div className="mt-1 space-y-2">
+              <div className="skeleton h-3 w-[85%] rounded-md" />
+              <div className="skeleton h-3 w-[60%] rounded-md" />
+              <div className="skeleton h-3 w-[40%] rounded-md" />
+            </div>
+            <div className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-[var(--color-border)] text-sm text-muted-foreground">
+              Upgrade
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1324,20 +1446,8 @@ function UsageSkeleton(): JSX.Element {
 function SubscriptionSkeleton(): JSX.Element {
   return (
     <div className="space-y-5">
-      <div className="space-y-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4">
-        <div className="h-4 w-1/3 rounded bg-muted" />
-        <div className="h-4 w-1/2 rounded bg-muted" />
-      </div>
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {[0, 1, 2].map((index) => (
-          <div key={index} className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-5">
-            <div className="h-5 w-1/3 rounded bg-muted" />
-            <div className="h-7 w-1/2 rounded bg-muted" />
-            <div className="h-20 rounded bg-muted" />
-            <div className="h-10 w-full rounded bg-muted" />
-          </div>
-        ))}
-      </div>
+      <SubscriptionSummarySkeleton />
+      <SubscriptionCardsSkeleton />
     </div>
   );
 }

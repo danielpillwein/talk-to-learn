@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ThemeSwitchClient } from "@/components/theme-switch";
 import { SiteFooter } from "@/components/site-footer";
 
 type LegalPageLayoutProps = {
@@ -33,7 +32,6 @@ export function LegalPageLayout({ title, children }: LegalPageLayoutProps): JSX.
             >
               Kostenlos starten
             </Link>
-            <ThemeSwitchClient />
           </div>
         </div>
       </nav>
