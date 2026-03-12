@@ -1,14 +1,14 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InfoTooltip } from '@/components/ui/info-tooltip';
+import { useToast } from '@/components/ui/toast/useToast';
 import {
     ArrowLeftIcon,
     ArrowPathIcon,
@@ -21,6 +21,7 @@ import {
     ArrowLeftIcon as ArrowLeftIconSolid,
     ArrowPathIcon as ArrowPathIconSolid,
     CheckCircleIcon as CheckCircleIconSolid,
+    CheckIcon as CheckIconSolid,
     MicrophoneIcon as MicrophoneIconSolid,
     StopIcon as StopIconSolid,
     XCircleIcon as XCircleIconSolid,
@@ -86,6 +87,8 @@ interface StageNotice {
     description: string;
 }
 
+const REVIEW_TRANSITION_MS = 180;
+
 function resolveStageFromProgress(payload: {
     learningPhase: 'intro' | 'scaffolded' | 'free';
     learningStage?: LearningStage;
@@ -101,9 +104,77 @@ function resolveStageFromProgress(payload: {
     return payload.learningPhase === 'scaffolded' ? 'scaffolded' : 'intro';
 }
 
+function LearnDetailSkeleton({ stage, onBack }: { stage: LearningStage; onBack: () => void }): JSX.Element {
+    const showAnswerSkeleton = stage !== 'free';
+    const showUnknownButtonSkeleton = stage === 'free';
+    const showMainActionSkeleton = true;
+
+    return (
+        <main className="py-2 md:py-3">
+            <div className="space-y-6">
+                <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3 shadow-sm md:p-4">
+                    <div className="flex w-full items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <Button variant="ghost" size="icon" onClick={onBack} className="group shrink-0">
+                                <IconSwap outline={ArrowLeftIcon} solid={ArrowLeftIconSolid} className="h-5 w-5" />
+                            </Button>
+                            <div className="skeleton h-7 w-48 max-w-[55vw] rounded-md" />
+                        </div>
+                        <div className="skeleton h-10 w-28 rounded-full" />
+                    </div>
+                    <div className="mt-1 flex items-center gap-3">
+                        <div className="skeleton h-3 flex-1 rounded-full" />
+                        <div className="shrink-0 text-sm text-muted-foreground">
+                            (
+                            <span className="mx-1 inline-flex items-center gap-1">
+                                <span className="h-2 w-2 rounded-full bg-success" />
+                                <span className="skeleton inline-block h-3 w-4 rounded-sm" />
+                            </span>
+                            <span className="mx-1 inline-flex items-center gap-1">
+                                <span className="h-2 w-2 rounded-full bg-warning" />
+                                <span className="skeleton inline-block h-3 w-4 rounded-sm" />
+                            </span>
+                            <span className="mx-1 inline-flex items-center gap-1">
+                                <span className="h-2 w-2 rounded-full bg-muted-foreground" />
+                                <span className="skeleton inline-block h-3 w-4 rounded-sm" />
+                            </span>
+                            )
+                        </div>
+                    </div>
+                </div>
+
+                <Card className="border-border bg-card shadow-sm">
+                    <CardContent className="space-y-5 p-6">
+                        <div className="space-y-2">
+                            <div className="skeleton skeleton-text long" />
+                            <div className="skeleton skeleton-text medium" />
+                        </div>
+
+                        {showAnswerSkeleton ? (
+                            <>
+                                <hr className="-mx-6 border-border" />
+                                <div className="space-y-2">
+                                    <h3 className="text-sm font-medium text-muted-foreground">Musterlösung</h3>
+                                    <div className="skeleton h-20 w-full rounded-xl" />
+                                </div>
+                            </>
+                        ) : null}
+
+                        <div className="pt-1 space-y-3">
+                            {showUnknownButtonSkeleton ? <div className="skeleton h-10 w-full rounded-xl" /> : null}
+                            {showMainActionSkeleton ? <div className="skeleton h-10 w-full rounded-xl" /> : null}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        </main>
+    );
+}
+
 export default function LearnDetailPage(): JSX.Element {
     const params = useParams<{ slug: string }>();
     const router = useRouter();
+    const toast = useToast();
     const deckId = params?.slug ? decodeURIComponent(params.slug) : '';
 
     const [questions, setQuestions] = useState<Question[]>([]);
@@ -113,7 +184,6 @@ export default function LearnDetailPage(): JSX.Element {
     const [isRecording, setIsRecording] = useState(false);
     const [isEvaluating, setIsEvaluating] = useState(false);
     const [result, setResult] = useState<EvaluationResult | null>(null);
-    const [error, setError] = useState<string | null>(null);
     const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
     const [isRequestingMic, setIsRequestingMic] = useState(false);
     const [reviewLoading, setReviewLoading] = useState<null | 'known' | 'review' | 'wrong'>(null);
@@ -123,13 +193,14 @@ export default function LearnDetailPage(): JSX.Element {
     const [showTranscript, setShowTranscript] = useState(false);
     const [isSubmittingProgress, setIsSubmittingProgress] = useState(false);
     const [stageNotice, setStageNotice] = useState<StageNotice | null>(null);
+    const [decisionFeedback, setDecisionFeedback] = useState<null | 'known' | 'review'>(null);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingStartedAtRef = useRef<number | null>(null);
     const srManagerRef = useRef<SpacedRepetitionManager | null>(null);
 
-    const updateQuestionState = (questionIndex: number, patch: Partial<Question>) => {
+    const updateQuestionState = useCallback((questionIndex: number, patch: Partial<Question>) => {
         setQuestions((prev) =>
             prev.map((question) =>
                 question.id === questionIndex
@@ -140,14 +211,13 @@ export default function LearnDetailPage(): JSX.Element {
                     : question
             )
         );
-    };
+    }, []);
 
     useEffect(() => {
         if (!deckId) return;
 
         const loadQuestions = async () => {
             setIsLoadingQuestions(true);
-            setError(null);
             try {
                 const response = await fetch(`/api/questions?deckId=${encodeURIComponent(deckId)}`);
                 if (!response.ok) throw new Error('Failed to load questions');
@@ -190,7 +260,7 @@ export default function LearnDetailPage(): JSX.Element {
                 setShowTranscript(false);
                 setStageNotice(null);
             } catch (err) {
-                setError('Fehler beim Laden der Fragen');
+                toast.error('Lernset konnte nicht geladen werden.', 'Bitte versuche es erneut.');
                 console.error(err);
             } finally {
                 setIsLoadingQuestions(false);
@@ -198,7 +268,7 @@ export default function LearnDetailPage(): JSX.Element {
         };
 
         loadQuestions();
-    }, [deckId]);
+    }, [deckId, toast]);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && (window as any).MathJax) {
@@ -212,14 +282,13 @@ export default function LearnDetailPage(): JSX.Element {
 
     const requestMicPermission = async () => {
         try {
-            setError(null);
             setIsRequestingMic(true);
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             stream.getTracks().forEach((track) => track.stop());
             setMicPermission('granted');
         } catch (err) {
             setMicPermission('denied');
-            setError('Mikrofon-Berechtigung verweigert.');
+            toast.error('Mikrofon-Berechtigung verweigert.', 'Erlaube das Mikrofon in deinem Browser.');
         } finally {
             setIsRequestingMic(false);
         }
@@ -228,17 +297,12 @@ export default function LearnDetailPage(): JSX.Element {
     const currentQuestion = currentQuestionId !== null ? questions[currentQuestionId] : null;
     const questionText = currentQuestion?.question ?? '';
     const answerText = currentQuestion?.modelAnswer ?? '';
-    const introKnown = questions.filter((question) => question.seen).length;
-    const introLearning = 0;
-    const introNew = Math.max(0, questions.length - introKnown);
-    const displayStats =
-        learningStage === 'intro'
-            ? { known: introKnown, learning: introLearning, new: introNew }
-            : stats;
+    const displayStats = stats;
     const totalProgress = Math.max(1, displayStats.known + displayStats.learning + displayStats.new);
     const knownPct = Math.round((displayStats.known / totalProgress) * 100);
     const learningPct = Math.round((displayStats.learning / totalProgress) * 100);
     const newPct = Math.max(0, 100 - knownPct - learningPct);
+    const showKnownLearningDivider = knownPct > 0 && learningPct > 0;
     const cardMode: CardMode =
         learningStage === 'intro'
             ? 'intro'
@@ -266,10 +330,16 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
 3) Erklären: nur mit der Frage erklären`;
     const stageTooltipTitle ='Was heißt das?';
 
+    useEffect(() => {
+        if (isLoadingQuestions) return;
+        if (currentQuestionId !== null) return;
+        if (questions.length === 0) return;
+        router.replace('/app/learn');
+    }, [currentQuestionId, isLoadingQuestions, questions.length, router]);
+
     const evaluateAnswer = async (audioBlob: Blob, speechSeconds: number) => {
         if (currentQuestionId === null || !deckId) return;
         setIsEvaluating(true);
-        setError(null);
 
         const evaluationMode = cardMode === 'scaffolded' ? 'supportive' : 'graded';
         const formData = new FormData();
@@ -309,7 +379,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
                 });
             }
         } catch (err) {
-            setError('Fehler bei der Auswertung');
+            toast.error('Auswertung fehlgeschlagen.', 'Bitte versuche es erneut.');
             console.error(err);
         } finally {
             setIsEvaluating(false);
@@ -318,7 +388,6 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
 
     const startRecording = async () => {
         try {
-            setError(null);
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mediaRecorder = new MediaRecorder(stream);
             mediaRecorderRef.current = mediaRecorder;
@@ -342,7 +411,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
             recordingStartedAtRef.current = Date.now();
             setIsRecording(true);
         } catch (err) {
-            setError('Fehler beim Zugriff auf das Mikrofon');
+            toast.error('Fehler beim Mikrofonzugriff.', 'Bitte prüfe deine Browser-Berechtigungen.');
             recordingStartedAtRef.current = null;
         }
     };
@@ -354,7 +423,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
         }
     };
 
-    const postProgress = async (payload: Record<string, unknown>) => {
+    const postProgress = useCallback(async (payload: Record<string, unknown>) => {
         const response = await fetch('/api/progress', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -366,15 +435,14 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
         }
 
         return (await response.json()) as ProgressResponse;
-    };
+    }, []);
 
-    const applyProgressResponse = (data: ProgressResponse, previousStage: LearningStage) => {
+    const applyProgressResponse = useCallback((data: ProgressResponse, previousStage: LearningStage) => {
         const nextStage = resolveStageFromProgress(data);
         setCurrentQuestionId(data.nextQuestionId);
         setStats(data.stats);
         setLearningStage(nextStage);
         setResult(null);
-        setError(null);
         setKnownUnknownRevealed(false);
         setShowTranscript(false);
 
@@ -397,11 +465,12 @@ Die Antworten solltest du mittlerweile kennen ;)`,
         } else {
             setStageNotice(null);
         }
-    };
+    }, []);
 
-    const handleIntroNext = async () => {
+    const handleIntroNext = useCallback(async () => {
         if (currentQuestionId === null || !deckId || isSubmittingProgress) return;
         setIsSubmittingProgress(true);
+        setDecisionFeedback('known');
 
         try {
             const previousStage = learningStage;
@@ -411,14 +480,40 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                 action: 'mark_seen',
                 questionId: currentQuestionId,
             });
+            await new Promise((resolve) => setTimeout(resolve, REVIEW_TRANSITION_MS));
             applyProgressResponse(data, previousStage);
         } catch (err) {
-            setError('Fehler beim Fortschritt-Update');
+            toast.error('Fortschritt konnte nicht gespeichert werden.', 'Bitte versuche es erneut.');
             console.error(err);
         } finally {
             setIsSubmittingProgress(false);
+            setDecisionFeedback(null);
         }
-    };
+    }, [currentQuestionId, deckId, isSubmittingProgress, learningStage, postProgress, applyProgressResponse, updateQuestionState, toast]);
+
+    const handleIntroReviewLater = useCallback(async () => {
+        if (currentQuestionId === null || !deckId || isSubmittingProgress) return;
+        setIsSubmittingProgress(true);
+        setDecisionFeedback('review');
+
+        try {
+            const previousStage = learningStage;
+            updateQuestionState(currentQuestionId, { seen: true });
+            const data = await postProgress({
+                deckId,
+                action: 'intro_review_later',
+                questionId: currentQuestionId,
+            });
+            await new Promise((resolve) => setTimeout(resolve, REVIEW_TRANSITION_MS));
+            applyProgressResponse(data, previousStage);
+        } catch (err) {
+            toast.error('Konnte nicht für später markiert werden.', 'Bitte versuche es erneut.');
+            console.error(err);
+        } finally {
+            setIsSubmittingProgress(false);
+            setDecisionFeedback(null);
+        }
+    }, [currentQuestionId, deckId, isSubmittingProgress, learningStage, postProgress, applyProgressResponse, updateQuestionState, toast]);
 
     const handleSkipKnownUnknown = async () => {
         if (currentQuestionId === null || !deckId || isSubmittingProgress) return;
@@ -439,17 +534,20 @@ Die Antworten solltest du mittlerweile kennen ;)`,
             });
             applyProgressResponse(data, previousStage);
         } catch (err) {
-            setError('Fehler beim Überspringen');
+            toast.error('Überspringen fehlgeschlagen.', 'Bitte versuche es erneut.');
             console.error(err);
         } finally {
             setIsSubmittingProgress(false);
         }
     };
 
-    const handleReview = async (type: 'known' | 'review' | 'wrong') => {
+    const handleReview = useCallback(async (type: 'known' | 'review' | 'wrong') => {
         if (!srManagerRef.current || currentQuestionId === null) return;
         if (reviewLoading) return;
         setReviewLoading(type);
+        if (type === 'known' || type === 'review') {
+            setDecisionFeedback(type);
+        }
 
         let usedServer = false;
         try {
@@ -465,6 +563,7 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                 questionId: currentQuestionId,
                 outcome: type,
             });
+            await new Promise((resolve) => setTimeout(resolve, REVIEW_TRANSITION_MS));
             applyProgressResponse(data, previousStage);
             usedServer = true;
         } catch (err) {
@@ -476,97 +575,84 @@ Die Antworten solltest du mittlerweile kennen ;)`,
             else if (type === 'review') srManagerRef.current.markAsReview(currentQuestionId);
             else srManagerRef.current.markAsWrong(currentQuestionId);
 
+            await new Promise((resolve) => setTimeout(resolve, REVIEW_TRANSITION_MS));
             const nextId = srManagerRef.current.getNextQuestion();
             setCurrentQuestionId(nextId);
             setStats(srManagerRef.current.getStats());
             setResult(null);
             setKnownUnknownRevealed(false);
-            setError(null);
         }
 
         setReviewLoading(null);
-    };
+        setDecisionFeedback(null);
+    }, [currentQuestionId, deckId, reviewLoading, learningStage, postProgress, applyProgressResponse, updateQuestionState]);
 
-    const handleReset = async () => {
-        if (!srManagerRef.current) return;
-        if (!confirm('Wirklich den Fortschritt für DIESES Lernset zurücksetzen?')) return;
+    const isSupportiveDecisionVisible =
+        !stageNotice && cardMode === 'scaffolded' && result?.mode === 'supportive';
+    const isIntroDecisionVisible = !stageNotice && cardMode === 'intro' && !result;
 
-        let usedServer = false;
-        try {
-            const response = await fetch('/api/progress', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    deckId,
-                    action: 'reset',
-                }),
-            });
+    useEffect(() => {
+        if (!isSupportiveDecisionVisible) return;
 
-            if (response.ok) {
-                const data = (await response.json()) as ProgressResponse;
-                setCurrentQuestionId(data.nextQuestionId);
-                setStats(data.stats);
-                setLearningStage(resolveStageFromProgress(data));
-                usedServer = true;
+        const onKeyDown = (event: KeyboardEvent) => {
+            const target = event.target as HTMLElement | null;
+            const isTypingTarget =
+                target instanceof HTMLInputElement ||
+                target instanceof HTMLTextAreaElement ||
+                Boolean(target?.closest('[contenteditable="true"]'));
+
+            if (isTypingTarget || reviewLoading !== null) {
+                return;
             }
-        } catch (err) {
-            console.error(err);
-        }
 
-        if (!usedServer) {
-            srManagerRef.current.reset();
-            const manager = srManagerRef.current;
-            setCurrentQuestionId(manager.getNextQuestion());
-            setStats(manager.getStats());
-            setLearningStage('intro');
-        }
+            if (event.key === '1') {
+                event.preventDefault();
+                void handleReview('known');
+                return;
+            }
 
-        setResult(null);
-        setKnownUnknownRevealed(false);
-        setReviewLoading(null);
-        setStageNotice(null);
-    };
+            if (event.key === '2') {
+                event.preventDefault();
+                void handleReview('review');
+            }
+        };
 
-    if (isLoadingQuestions) {
-        return (
-            <div className="flex min-h-[calc(100vh-7rem)] w-full flex-col items-center justify-center gap-3 rounded-3xl bg-card p-10 shadow-sm">
-                <ArrowPathIcon className="h-6 w-6 animate-spin text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                    Einen Moment, wir laden gerade dein Lernset...
-                </p>
-                </div>
-        );
-    }
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [isSupportiveDecisionVisible, reviewLoading, handleReview]);
 
-    if (currentQuestionId === null) {
-        return (
-            <div className="min-h-screen bg-background flex items-center justify-center p-4">
-                <Card className="w-full max-w-md text-center border-border bg-card">
-                    <CardContent className="p-8 space-y-6">
-                        <CheckCircleIcon className="h-16 w-16 text-success mx-auto" />
-                        <h2 className="text-2xl font-bold">Set erledigt! 🎉</h2>
-                        <div className="flex gap-3 justify-center">
-                            <Button onClick={handleBackToSelection} variant="outline" className="group">
-                                <IconSwap
-                                    outline={ArrowLeftIcon}
-                                    solid={ArrowLeftIconSolid}
-                                    className="mr-2 h-4 w-4"
-                                />{' '}
-                                Zurück
-                            </Button>
-                            <Button onClick={handleReset} variant="ghost" className="group">
-                                <IconSwap
-                                    outline={ArrowPathIcon}
-                                    solid={ArrowPathIconSolid}
-                                    className="mr-2 h-4 w-4"
-                                />{' '}
-                                Reset
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-        );
+    useEffect(() => {
+        if (!isIntroDecisionVisible) return;
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            const target = event.target as HTMLElement | null;
+            const isTypingTarget =
+                target instanceof HTMLInputElement ||
+                target instanceof HTMLTextAreaElement ||
+                Boolean(target?.closest('[contenteditable="true"]'));
+
+            if (isTypingTarget || isSubmittingProgress) {
+                return;
+            }
+
+            if (event.key === '1') {
+                event.preventDefault();
+                void handleIntroNext();
+                return;
+            }
+
+            if (event.key === '2') {
+                event.preventDefault();
+                void handleIntroReviewLater();
+            }
+        };
+
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [isIntroDecisionVisible, isSubmittingProgress, handleIntroNext, handleIntroReviewLater]);
+
+    if (isLoadingQuestions || currentQuestionId === null) {
+        return <LearnDetailSkeleton stage={learningStage} onBack={handleBackToSelection} />;
     }
 
     return (
@@ -634,8 +720,16 @@ Die Antworten solltest du mittlerweile kennen ;)`,
 
                         <div className="space-y-2">
                             <div className="flex items-center gap-3">
-                                <div className="flex h-3 flex-1 overflow-hidden rounded-full bg-secondary">
-                                    <div className="bg-success" style={{ width: `${knownPct}%` }} />
+                                <div className="flex h-3 flex-1 overflow-hidden rounded-full border border-secondary">
+                                    <div
+                                        className="bg-success"
+                                        style={{
+                                            width: `${knownPct}%`,
+                                            borderRightWidth: showKnownLearningDivider ? '1px' : '0',
+                                            borderRightStyle: 'solid',
+                                            borderRightColor: 'var(--background)',
+                                        }}
+                                    />
                                     <div className="bg-warning" style={{ width: `${learningPct}%` }} />
                                     <div className="bg-muted-foreground/30" style={{ width: `${newPct}%` }} />
                                 </div>
@@ -667,21 +761,42 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                                 </h2>
                                 <hr className="-mx-6 border-border" />
                                 <div>
-                                    <h3 className="intro-label text-sm font-medium text-muted-foreground">
-                                        Antwort
-                                    </h3>
+                                    <h3 className="intro-label text-sm font-medium text-muted-foreground">Musterlösung</h3>
                                     <p className="intro-text mt-2 text-base leading-relaxed text-foreground">{answerText}</p>
                                 </div>
                                 {!stageNotice && !result && (
                                     <div className="pt-1">
-                                        <Button
-                                            onClick={handleIntroNext}
-                                            aria-label="Nächste Frage"
-                                            className="h-10 w-full rounded-xl px-4 text-sm md:w-auto"
-                                            disabled={isSubmittingProgress}
-                                        >
-                                            Nächste Frage
-                                        </Button>
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            <Button
+                                                onClick={handleIntroNext}
+                                                aria-label="Ich kann das"
+                                                className="h-10 w-full rounded-xl px-4 text-sm"
+                                                disabled={isSubmittingProgress}
+                                            >
+                                                <CheckIconSolid className="h-4 w-4 shrink-0" />
+                                                <span>Ich kann das</span>
+                                            </Button>
+                                            <Button
+                                                onClick={handleIntroReviewLater}
+                                                aria-label="Später nochmal zeigen"
+                                                variant="outline"
+                                                className="h-10 w-full rounded-xl px-4 text-sm"
+                                                disabled={isSubmittingProgress}
+                                            >
+                                                <ArrowPathIcon className="h-4 w-4 shrink-0" />
+                                                <span>Später nochmal zeigen</span>
+                                            </Button>
+                                        </div>
+                                        <div className="mt-2 min-h-6 text-xs text-muted-foreground">
+                                            {decisionFeedback === 'known' ? (
+                                                <span className="inline-flex items-center gap-1 text-success">
+                                                    <span>✓</span>
+                                                    <span>Karte abgeschlossen</span>
+                                                </span>
+                                            ) : decisionFeedback === 'review' ? (
+                                                <span>Diese Karte erscheint gleich noch einmal.</span>
+                                            ) : null}
+                                        </div>
                                     </div>
                                 )}
                             </CardContent>
@@ -720,7 +835,7 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                                             </div>
                                             <hr className="-mx-6 border-border" />
                                             <div>
-                                                <h3 className="text-sm font-medium text-muted-foreground">Antwort</h3>
+                                                <h3 className="text-sm font-medium text-muted-foreground">Musterlösung</h3>
                                                 <p className="mt-2 max-h-52 overflow-y-auto pr-1 text-sm leading-relaxed text-foreground">
                                                     {answerText}
                                                 </p>
@@ -751,7 +866,7 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                                         <>
                                             <hr className="-mx-6 border-border" />
                                             <div>
-                                                <h3 className="text-sm font-medium text-muted-foreground">Antwort</h3>
+                                                <h3 className="text-sm font-medium text-muted-foreground">Musterlösung</h3>
                                                 <p className="mt-2 text-base leading-relaxed text-foreground">{answerText}</p>
                                             </div>
                                         </>
@@ -833,28 +948,40 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                     )}
 
                     {stageNotice || cardMode === 'intro' || !result ? null : result.mode === 'supportive' ? (
-                        <div className="animate-in fade-in slide-in-from-bottom-4">
+                        <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4">
                             <div className="grid gap-2 md:grid-cols-2">
                                 <Button
                                     onClick={() => handleReview('known')}
-                                    variant={result.feedback.recommendation === 'understood' ? 'default' : 'outline'}
+                                    variant="default"
                                     disabled={reviewLoading !== null}
                                     isLoading={reviewLoading === 'known'}
                                     loadingText="Speichere"
-                                    className="h-10 rounded-xl px-4 text-sm"
+                                    className="h-10 w-full rounded-xl px-4 text-sm"
                                 >
-                                    Hab ich verstanden
+                                    <CheckIconSolid className="h-4 w-4 shrink-0" />
+                                    <span>Ich kann das</span>
                                 </Button>
                                 <Button
                                     onClick={() => handleReview('review')}
-                                    variant={result.feedback.recommendation === 'review_later' ? 'default' : 'outline'}
+                                    variant="outline"
                                     disabled={reviewLoading !== null}
                                     isLoading={reviewLoading === 'review'}
                                     loadingText="Speichere"
-                                    className="h-10 rounded-xl px-4 text-sm"
+                                    className="h-10 w-full rounded-xl px-4 text-sm"
                                 >
-                                    Frag mich später nochmal
+                                    <ArrowPathIcon className="h-4 w-4 shrink-0" />
+                                    <span>Später nochmal zeigen</span>
                                 </Button>
+                            </div>
+                            <div className="min-h-6 text-xs text-muted-foreground">
+                                {decisionFeedback === 'known' ? (
+                                    <span className="inline-flex items-center gap-1 text-success">
+                                        <span>✓</span>
+                                        <span>Karte abgeschlossen</span>
+                                    </span>
+                                ) : decisionFeedback === 'review' ? (
+                                    <span>Diese Karte erscheint gleich noch einmal.</span>
+                                ) : null}
                             </div>
                         </div>
                     ) : (
@@ -947,11 +1074,6 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                         </div>
                     )}
 
-                    {error && (
-                        <Alert variant="destructive">
-                            <AlertDescription>{error}</AlertDescription>
-                        </Alert>
-                    )}
                 </div>
 
                 {stageNotice && (

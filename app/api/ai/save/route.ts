@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { resolvePlanForUserId, resolveQuestionCountLimitForPlan } from "@/lib/account-plans";
 import { db } from "@/lib/db";
 
 type CardPayload = { question: string; answer: string };
@@ -27,9 +28,20 @@ export async function POST(request: Request): Promise<NextResponse> {
   const cards = (body.cards as CardPayload[] | undefined) ?? [];
   const fileName = String(body.fileName ?? "").trim();
   const hasUploadedSource = fileName.length > 0;
+  const plan = await resolvePlanForUserId(session.user.id);
+  const maxQuestionCount = resolveQuestionCountLimitForPlan(plan);
 
   if (!title || cards.length === 0) {
     return NextResponse.json({ error: "title and cards are required" }, { status: 400 });
+  }
+
+  if (cards.length > maxQuestionCount) {
+    return NextResponse.json(
+      {
+        error: `Zu viele Fragen für deinen Plan. Maximal erlaubt: ${maxQuestionCount}.`,
+      },
+      { status: 400 }
+    );
   }
 
   const deck = await db.deck.create({

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast/useToast";
-import { ChevronDownIcon, SparklesIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, ChevronDownIcon, SparklesIcon, TrashIcon } from "@heroicons/react/24/outline";
 
 const EMPTY_CARD = { question: "", answer: "" };
 
@@ -119,7 +120,14 @@ function EditDeckDetailsSkeleton(): JSX.Element {
   return (
     <Card className="border-border bg-card shadow-sm">
       <CardHeader>
-        <CardTitle className="text-lg font-semibold text-foreground">Lernset-Details</CardTitle>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="icon" className="-ml-1">
+            <Link href="/app/learn" aria-label="Zurück zu Lernsets">
+              <ArrowLeftIcon className="h-5 w-5" />
+            </Link>
+          </Button>
+          <CardTitle className="text-lg font-semibold text-foreground">Lernset-Details</CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         <section className="space-y-3">
@@ -987,9 +995,16 @@ export default function EditDeckPage(): JSX.Element {
           <>
         <Card className="fade-in border-border bg-card shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-foreground">
-              Lernset-Details
-            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Button asChild variant="ghost" size="icon" className="-ml-1">
+                <Link href="/app/learn" aria-label="Zurück zu Lernsets">
+                  <ArrowLeftIcon className="h-5 w-5" />
+                </Link>
+              </Button>
+              <CardTitle className="text-lg font-semibold text-foreground">
+                Lernset-Details
+              </CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-5">
             <section className="space-y-3">
@@ -1214,7 +1229,7 @@ export default function EditDeckPage(): JSX.Element {
                           >
                             <SparklesIcon className="h-4 w-4" />
                             {refineLoading?.index === index ? "Verbessere…" : "Verbessern"}
-                            <img
+                            <Image
                               src="/icons/premium-crown.svg"
                               alt={premiumPlanLabel}
                               width={14}
@@ -1234,7 +1249,7 @@ export default function EditDeckPage(): JSX.Element {
                             >
                               <SparklesIcon className="h-4 w-4" />
                               Verbessern
-                              <img
+                              <Image
                                 src="/icons/premium-crown.svg"
                                 alt={premiumPlanLabel}
                                 width={14}

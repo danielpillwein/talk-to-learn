@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { AI_MODELS } from "@/lib/ai/models";
 import { CreateDeckError, mapCreateDeckError } from "@/lib/create-deck-ai";
 import { loadPrompt, loadRenderedPrompt } from "@/lib/prompt-store";
 
@@ -11,6 +12,18 @@ type RefineAction =
   | "examOriented";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const REFINE_ACTION_INSTRUCTIONS: Record<RefineAction, string> = {
+  expandAnswer:
+    "Behalte die Frage, aber mache die Antwort ausfuehrlicher mit mehr Kontext bei gleicher Aussage.",
+  condenseAnswer:
+    "Behalte die Frage, aber formuliere die Antwort kuerzer und praegnanter bei gleicher Aussage.",
+  increaseDifficulty:
+    "Behalte den inhaltlichen Kern, aber erhoehe die kognitive Anforderung (praeziser, anspruchsvoller, dichter).",
+  simplifyAnswer:
+    "Behalte den inhaltlichen Kern, aber vereinfache Sprache und Struktur fuer leichtere Verstaendlichkeit.",
+  examOriented:
+    "Formuliere Frage und Antwort pruefungsnaeher und anwendungsorientierter, ohne den Faktenkern zu verlassen.",
+};
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
@@ -32,11 +45,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       });
     }
 
-    if (
-      !["expandAnswer", "condenseAnswer", "increaseDifficulty", "simplifyAnswer", "examOriented"].includes(
-        action
-      )
-    ) {
+    const actionInstruction = REFINE_ACTION_INSTRUCTIONS[action];
+    if (!actionInstruction) {
       throw new CreateDeckError({
         code: "INVALID_REQUEST",
         status: 400,
@@ -52,12 +62,13 @@ export async function POST(request: Request): Promise<NextResponse> {
       difficulty: difficulty || "mittel",
       topic_focus: topicFocus || "-",
       action,
+      action_instruction: actionInstruction,
       question,
       answer,
     });
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: AI_MODELS.EDITING,
       response_format: { type: "json_object" },
       temperature: action === "expandAnswer" || action === "examOriented" ? 0.3 : 0.2,
       messages: [

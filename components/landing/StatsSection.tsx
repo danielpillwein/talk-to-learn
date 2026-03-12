@@ -57,9 +57,14 @@ function StatsGrid({ values }: { values: number[] }): JSX.Element {
 
 export function StatsSection(): JSX.Element {
   const sectionRef = useRef<HTMLElement | null>(null);
+  const valuesRef = useRef<number[]>(PLATFORM_STATS.map(() => 0));
   const [hasStarted, setHasStarted] = useState(false);
   const [targets, setTargets] = useState<number[]>(() => PLATFORM_STATS.map(() => 0));
   const [values, setValues] = useState<number[]>(() => PLATFORM_STATS.map(() => 0));
+
+  useEffect(() => {
+    valuesRef.current = values;
+  }, [values]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -129,7 +134,7 @@ export function StatsSection(): JSX.Element {
 
     const durationMs = 1400;
     const startAt = performance.now();
-    const startValues = values;
+    const startValues = valuesRef.current;
     let frame = 0;
 
     const tick = (now: number) => {

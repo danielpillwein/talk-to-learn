@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -614,7 +615,7 @@ export default function CreateDeckPage(): JSX.Element {
     setQuestionCountInput(String(initial));
   }, [billingSnapshot, freePlanCardLimit, maxQuestionCount, questionCount, questionCountInput]);
 
-  const goToStep = (nextStep: FlowStepId) => {
+  const goToStep = useCallback((nextStep: FlowStepId) => {
     setActiveStep(nextStep);
     window.setTimeout(() => {
       const map: Record<FlowStepId, HTMLDivElement | null> = {
@@ -624,9 +625,9 @@ export default function CreateDeckPage(): JSX.Element {
       };
       map[nextStep]?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 60);
-  };
+  }, []);
 
-  const navigateToLearnAfterSave = (target: string) => {
+  const navigateToLearnAfterSave = useCallback((target: string) => {
     allowNavigationRef.current = true;
     router.replace(target);
 
@@ -639,7 +640,7 @@ export default function CreateDeckPage(): JSX.Element {
         window.location.assign(target);
       }
     }, 1400);
-  };
+  }, [router]);
   const activeProcessingLabel = useMemo(() => {
     if (activeStage) {
       const stage = STAGE_DEFS.find((entry) => entry.key === activeStage);
@@ -656,7 +657,7 @@ export default function CreateDeckPage(): JSX.Element {
       ? "/mascot/otter-reading.webm"
       : "/mascot/otter-writing.webm";
 
-  const trackEvent = (event: string, payload: Record<string, unknown>) => {
+  const trackEvent = useCallback((event: string, payload: Record<string, unknown>) => {
     void fetch("/api/analytics/event", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -665,17 +666,17 @@ export default function CreateDeckPage(): JSX.Element {
     }).catch(() => {
       // Analytics should never block UX.
     });
-  };
+  }, []);
 
-  const showErrorToast = (message: string, title = "Fehler") => {
+  const showErrorToast = useCallback((message: string, title = "Fehler") => {
     const safeMessage = String(message).trim();
     if (!safeMessage) return;
     toast.error(title, safeMessage);
-  };
+  }, [toast]);
 
-  const showApiErrorToast = (error: ApiErrorState, title = "Fehler") => {
+  const showApiErrorToast = useCallback((error: ApiErrorState, title = "Fehler") => {
     showErrorToast(error.message, title);
-  };
+  }, [showErrorToast]);
 
   const setQuestionCountWithHint = (nextValue: unknown) => {
     setQuestionCount((prev) => {
@@ -761,7 +762,7 @@ export default function CreateDeckPage(): JSX.Element {
     setIsScrubbingQuestionCount(false);
   };
 
-  const resetFlowForNewFile = (selectedFile: File | null) => {
+  const resetFlowForNewFile = useCallback((selectedFile: File | null) => {
     setFile(selectedFile);
     setFileName(selectedFile?.name ?? "");
     setAnalysisReady(false);
@@ -770,34 +771,9 @@ export default function CreateDeckPage(): JSX.Element {
     setTopicFocus("");
     setFocusOpen(false);
     setActiveStep(1);
-  };
+  }, []);
 
-  const consumeFile = (selectedFile: File | null, options?: { persist?: boolean }) => {
-    if (!selectedFile) return;
-    if (isDeriving) return;
-    if (!isAllowedFile(selectedFile)) {
-      toast.error("Upload fehlgeschlagen", "Bitte lade eine PDF-, TXT- oder MD-Datei hoch.");
-      return;
-    }
-    if (selectedFile.size > MAX_UPLOAD_BYTES) {
-      toast.error(
-        "Upload fehlgeschlagen",
-        `Die Datei ist größer als ${MAX_UPLOAD_MB}MB. Komprimiere sie bitte, oder verwende eine andere.`
-      );
-      return;
-    }
-
-    if (options?.persist !== false) {
-      void saveHeroUpload(selectedFile).catch(() => {
-        // Ignore cache write failures and continue with the upload flow.
-      });
-    }
-
-    resetFlowForNewFile(selectedFile);
-    void handlePrepare(selectedFile);
-  };
-
-  const hydrateFromDerive = (payload: DeriveResponse) => {
+  const hydrateFromDerive = useCallback((payload: DeriveResponse) => {
     const nextTitle = String(payload.suggestedTitle ?? "").trim();
     const nextDifficulty = isDifficulty(payload.suggestedDifficulty)
       ? payload.suggestedDifficulty
@@ -810,9 +786,9 @@ export default function CreateDeckPage(): JSX.Element {
     setDifficulty(nextDifficulty);
     setDetectedTopics(nextTopics);
     setFocusOpen(false);
-  };
+  }, []);
 
-  const handlePrepare = async (selectedFile?: File | null) => {
+  const handlePrepare = useCallback(async (selectedFile?: File | null) => {
     const fileToPrepare = selectedFile ?? file;
     if (!fileToPrepare) {
       toast.info("Datei fehlt", "Bitte wähle zuerst eine Datei aus.");
@@ -865,7 +841,32 @@ export default function CreateDeckPage(): JSX.Element {
       setActiveStage(null);
       setLoaderOpen(false);
     }
-  };
+  }, [file, goToStep, hydrateFromDerive, showApiErrorToast, toast, trackEvent]);
+
+  const consumeFile = useCallback((selectedFile: File | null, options?: { persist?: boolean }) => {
+    if (!selectedFile) return;
+    if (isDeriving) return;
+    if (!isAllowedFile(selectedFile)) {
+      toast.error("Upload fehlgeschlagen", "Bitte lade eine PDF-, TXT- oder MD-Datei hoch.");
+      return;
+    }
+    if (selectedFile.size > MAX_UPLOAD_BYTES) {
+      toast.error(
+        "Upload fehlgeschlagen",
+        `Die Datei ist größer als ${MAX_UPLOAD_MB}MB. Komprimiere sie bitte, oder verwende eine andere.`
+      );
+      return;
+    }
+
+    if (options?.persist !== false) {
+      void saveHeroUpload(selectedFile).catch(() => {
+        // Ignore cache write failures and continue with the upload flow.
+      });
+    }
+
+    resetFlowForNewFile(selectedFile);
+    void handlePrepare(selectedFile);
+  }, [handlePrepare, isDeriving, resetFlowForNewFile, toast]);
 
   const runGeneration = async (action: "generate" | "regenerate", sourceFile: File | null) => {
     if (!sourceFile) {
@@ -1462,7 +1463,7 @@ export default function CreateDeckPage(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [file, isDraftHydrated, analysisReady, fileName]);
+  }, [file, isDraftHydrated, analysisReady, fileName, consumeFile]);
 
   useEffect(() => {
     if (!user || autoSaveTriggered.current) return;
@@ -1519,7 +1520,7 @@ export default function CreateDeckPage(): JSX.Element {
     };
 
     void autoSave();
-  }, [user, router, cards.length, title]);
+  }, [user, cards.length, title, navigateToLearnAfterSave, showApiErrorToast, toast]);
 
   useEffect(() => {
     setQuestionCountInput(String(questionCount));
@@ -1881,7 +1882,7 @@ export default function CreateDeckPage(): JSX.Element {
                     />
                     <span className="text-sm font-semibold text-foreground">Fragen</span>
                     {questionCount > freePlanCardLimit && (
-                      <img
+                      <Image
                         src="/icons/premium-crown.svg"
                         alt={premiumPlanLabel}
                         width={16}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { AI_MODELS } from "@/lib/ai/models";
 import {
   deriveGenerationParamsWithAiTitle,
   extractTextFromFile,
@@ -18,6 +19,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       openai,
       text: normalizedText,
       filename,
+      model: AI_MODELS.GENERATION,
     });
 
     // Count document analysis directly after a successful upload/derive step.

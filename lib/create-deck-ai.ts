@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import pdfParse from "pdf-parse";
+import { AI_MODELS } from "@/lib/ai/models";
 import { loadPrompt, loadRenderedPrompt } from "@/lib/prompt-store";
 import { billing } from "@/src/config/billing";
 
@@ -322,10 +323,10 @@ function deriveStyle(text: string, headingDensity: number): StyleOption {
   return "kompakt";
 }
 
-function clampQuestionCount(value: unknown): number {
+function clampQuestionCount(value: unknown, maxQuestionCount = MAX_QUESTION_COUNT): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 8;
-  return Math.max(MIN_QUESTION_COUNT, Math.min(MAX_QUESTION_COUNT, Math.round(numeric)));
+  return Math.max(MIN_QUESTION_COUNT, Math.min(maxQuestionCount, Math.round(numeric)));
 }
 
 function normalizeDifficulty(value: unknown, fallback: DifficultyOption): DifficultyOption {
@@ -452,8 +453,10 @@ export async function deriveGenerationParamsWithAiTitle(input: {
   openai: OpenAI;
   text: string;
   filename: string;
+  model?: (typeof AI_MODELS)[keyof typeof AI_MODELS];
 }): Promise<DerivedGenerationParams> {
   const { openai, text, filename } = input;
+  const model = input.model ?? AI_MODELS.GENERATION;
   const derived = deriveGenerationParams(text, filename);
   const fallbackTitle = derived.suggestedTitle;
   const context = buildTitleContext(text, derived.detectedTopics);
@@ -469,7 +472,7 @@ export async function deriveGenerationParamsWithAiTitle(input: {
     });
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -506,12 +509,13 @@ export function resolveGenerationParams(input: {
   difficulty?: string | null;
   count?: string | number | null;
   topicFocus?: string | null;
+  maxQuestionCount?: number | null;
 }): ResolvedGenerationParams {
   const { derived } = input;
   const title = String(input.title ?? "").trim() || derived.suggestedTitle || fallbackTitle("upload");
   const style = normalizeStyle(input.style, derived.suggestedStyle);
   const difficulty = normalizeDifficulty(input.difficulty, derived.suggestedDifficulty);
-  const count = clampQuestionCount(input.count ?? derived.suggestedQuestionCount);
+  const count = clampQuestionCount(input.count ?? derived.suggestedQuestionCount, input.maxQuestionCount ?? undefined);
   const topicFocus = String(input.topicFocus ?? "").trim();
   return {
     title,
@@ -540,19 +544,42 @@ function qualityCheckCards(cards: CardPayload[], requestedCount: number): CardPa
   return cleaned;
 }
 
+type GeneratePromptStyle = "verstehen" | "anwenden";
+
+function buildGenerateSystemPrompt(input: {
+  style: GeneratePromptStyle;
+  difficulty: DifficultyOption;
+  mode: GenerationMode;
+}): string {
+  const { style, difficulty, mode } = input;
+  return [
+    loadPrompt("ai-generate-core"),
+    loadPrompt(`ai-generate-style-${style}`),
+    loadPrompt(`ai-generate-difficulty-${difficulty}`),
+    loadPrompt(`ai-generate-mode-${mode}`),
+    loadPrompt("ai-generate-output"),
+  ].join("\n\n");
+}
+
 export async function generateCardsFromText(input: {
   openai: OpenAI;
   text: string;
   params: ResolvedGenerationParams;
   detectedTopics: string[];
   mode?: GenerationMode;
+  model?: (typeof AI_MODELS)[keyof typeof AI_MODELS];
 }): Promise<CardPayload[]> {
   const { openai, text, params, detectedTopics } = input;
   const mode = input.mode ?? "default";
-  const promptStyle = params.style === "pruefungsnah" ? "anwenden" : "verstehen";
+  const model = input.model ?? AI_MODELS.GENERATION;
+  const promptStyle: GeneratePromptStyle = params.style === "pruefungsnah" ? "anwenden" : "verstehen";
 
-  const systemPrompt = loadPrompt("ai-generate");
-  const modeHint = loadRenderedPrompt("ai-generate-mode", { mode }).trim();
+  const systemPrompt = buildGenerateSystemPrompt({
+    style: promptStyle,
+    difficulty: params.difficulty,
+    mode,
+  });
+  // TODO(P1): Add token-aware truncation/chunking for SOURCE_TEXT to cap prompt cost on long documents.
   const userPrompt = loadRenderedPrompt("ai-generate-user", {
     title: params.title,
     style: promptStyle,
@@ -560,12 +587,11 @@ export async function generateCardsFromText(input: {
     count: params.count,
     detected_topics: detectedTopics.join(", ") || "keine",
     topic_focus: params.topicFocus || "keiner",
-    mode_hint: modeHint,
     text,
   });
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model,
     messages: [
       { role: "system", content: systemPrompt },
       {

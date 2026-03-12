@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
+import { AI_MODELS } from '@/lib/ai/models';
 import { db } from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { loadPrompt, loadRenderedPrompt } from '@/lib/prompt-store';
@@ -90,17 +91,17 @@ export async function POST(request: Request): Promise<NextResponse> {
             }
         }
 
-        // 3. Bewertung mit OpenAI
-        const systemPrompt = loadPrompt('evaluate');
-        const evaluationPrompt = loadRenderedPrompt('evaluate-user', {
-            mode: evaluationMode,
+        // 3. Bewertung mit OpenAI (mode-specific prompt pair)
+        const promptPrefix = evaluationMode === 'supportive' ? 'evaluate-supportive' : 'evaluate-graded';
+        const systemPrompt = loadPrompt(`${promptPrefix}-system`);
+        const evaluationPrompt = loadRenderedPrompt(`${promptPrefix}-user`, {
             question: question.question,
             model_answer: question.answer,
             user_answer: userAnswer,
         });
 
         const completion = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: AI_MODELS.EDITING,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: evaluationPrompt },

@@ -394,8 +394,8 @@ export default function LearnIndexPage(): JSX.Element {
         window.scrollTo({ top: 0, left: 0 });
 
         const play = async () => {
-            const module = await import('canvas-confetti');
-            const confetti = module.default;
+            const confettiModule = await import('canvas-confetti');
+            const confetti = confettiModule.default;
             confetti({
                 particleCount: 70,
                 spread: 55,
@@ -563,7 +563,7 @@ export default function LearnIndexPage(): JSX.Element {
 
                         {items.length > 0 && visibleItems.length === 0 && (
                             <div className="rounded-3xl bg-card p-8 text-center text-muted-foreground shadow-sm">
-                                <p className="text-base text-foreground">Keine Ergebnisse für '{searchTerm}'</p>
+                                <p className="text-base text-foreground">Keine Ergebnisse für &apos;{searchTerm}&apos;</p>
                                 <div className="mt-4">
                                     <Button
                                         variant="outline"

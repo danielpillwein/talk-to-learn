@@ -1,0 +1,1677 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
+info:
+  title: Talk-to-Learn API
+  version: 1.0.0
+  description: >-
+    OpenAPI-Dokumentation der Server-Endpunkte unter `app/api/*`.
+    Die Spezifikation beschreibt die aktuell implementierten Request-/Response-Formate.
+servers:
+  - url: /
+    description: Relative Basis-URL der Next.js App
+security:
+  - NextAuthSession: []
+  - NextAuthSecureSession: []
+tags:
+  - name: Progress
+  - name: Decks
+  - name: Questions
+  - name: Files
+  - name: Account
+  - name: AI
+  - name: Evaluation
+  - name: Analytics
+  - name: Billing
+  - name: Stripe
+  - name: Public
+  - name: Auth
+paths:
+  /api/progress:
+    get:
+      tags: [Progress]
+      summary: Lernfortschritt für ein Lernset laden
+      operationId: getProgress
+      parameters:
+        - $ref: '#/components/parameters/DeckIdQuery'
+      responses:
+        '200':
+          description: Fortschritt geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+    post:
+      tags: [Progress]
+      summary: Lernfortschritt für ein Lernset aktualisieren
+      operationId: updateProgress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgressPostRequest'
+      responses:
+        '200':
+          description: Fortschritt aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /api/questions:
+    get:
+      tags: [Questions]
+      summary: Fragen eines Lernsets laden
+      operationId: getQuestions
+      parameters:
+        - $ref: '#/components/parameters/DeckIdQuery'
+      responses:
+        '200':
+          description: Fragen geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuestionsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/files:
+    get:
+      tags: [Files]
+      summary: Lernsets auflisten
+      operationId: listFiles
+      description: Gibt bei fehlender Anmeldung ein leeres Array zurück.
+      security: []
+      responses:
+        '200':
+          description: Lernsets geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilesResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/decks/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeckIdPath'
+    get:
+      tags: [Decks]
+      summary: Lernset mit Karten laden
+      operationId: getDeckById
+      responses:
+        '200':
+          description: Lernset geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeckResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Decks]
+      summary: Lernset oder Lernphase aktualisieren
+      operationId: updateDeck
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeckUpdateRequest'
+      responses:
+        '200':
+          description: Aktualisierung erfolgreich
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Decks]
+      summary: Lernset löschen
+      operationId: deleteDeck
+      responses:
+        '200':
+          description: Lernset gelöscht
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/analytics/event:
+    post:
+      tags: [Analytics]
+      summary: Analytics-Event protokollieren
+      operationId: logAnalyticsEvent
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyticsEventRequest'
+      responses:
+        '200':
+          description: Event akzeptiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+
+  /api/ai/save:
+    post:
+      tags: [AI]
+      summary: KI-generiertes Lernset speichern
+      operationId: saveAiDeck
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiSaveRequest'
+      responses:
+        '200':
+          description: Lernset gespeichert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSaveResponse'
+        '400':
+          description: Ungültige Anfrage oder planabhängiges Fragenlimit überschritten
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/ai/generate:
+    post:
+      tags: [AI]
+      summary: Karten aus Text generieren (Legacy JSON Endpoint)
+      operationId: generateCards
+      security: []
+      description: >-
+        Generiert Karten direkt aus Text.
+        `count` wird serverseitig abhängig vom Nutzerplan begrenzt
+        (ohne Authentifizierung mit konservativem Free-Limit).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiGenerateRequest'
+      responses:
+        '200':
+          description: Karten generiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiGenerateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '500':
+          $ref: '#/components/responses/StructuredApiError500'
+        '502':
+          description: KI-Antwort unvollständig oder ungültig
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredApiErrorResponse'
+        '504':
+          $ref: '#/components/responses/StructuredApiError504'
+
+  /api/ai/extract:
+    post:
+      tags: [AI]
+      summary: Text aus hochgeladener Datei extrahieren
+      operationId: extractText
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Text extrahiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractTextResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/ai/derive-file:
+    post:
+      tags: [AI]
+      summary: Generierungsparameter aus Datei ableiten
+      operationId: deriveFileParams
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Parameter abgeleitet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DerivedGenerationParams'
+        '400':
+          $ref: '#/components/responses/StructuredApiError400'
+        '413':
+          $ref: '#/components/responses/StructuredApiError413'
+        '422':
+          $ref: '#/components/responses/StructuredApiError422'
+        '500':
+          $ref: '#/components/responses/StructuredApiError500'
+        '504':
+          $ref: '#/components/responses/StructuredApiError504'
+
+  /api/ai/generate-file:
+    post:
+      tags: [AI]
+      summary: Karten aus Datei generieren
+      operationId: generateCardsFromFile
+      security: []
+      description: >-
+        `count` wird serverseitig abhängig vom Nutzerplan begrenzt
+        (ohne Authentifizierung mit konservativem Free-Limit).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                mode:
+                  type: string
+                  enum: [default, alternate]
+                  description: Optional; nur `alternate` wird explizit ausgewertet.
+                title:
+                  type: string
+                topicFocus:
+                  type: string
+                style:
+                  type: string
+                  enum: [erklärend, pruefungsnah, kompakt]
+                difficulty:
+                  type: string
+                  enum: [leicht, mittel, anspruchsvoll]
+                count:
+                  type: string
+                  description: Gewünschte Kartenanzahl; serverseitig planabhängig begrenzt.
+      responses:
+        '200':
+          description: Karten generiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDeckFromFileResponse'
+        '400':
+          $ref: '#/components/responses/StructuredApiError400'
+        '413':
+          $ref: '#/components/responses/StructuredApiError413'
+        '422':
+          $ref: '#/components/responses/StructuredApiError422'
+        '500':
+          $ref: '#/components/responses/StructuredApiError500'
+        '504':
+          $ref: '#/components/responses/StructuredApiError504'
+
+  /api/ai/regenerate:
+    post:
+      tags: [AI]
+      summary: Karten im Alternativmodus aus Datei neu generieren
+      operationId: regenerateCardsFromFile
+      security: []
+      description: >-
+        `count` wird serverseitig abhängig vom Nutzerplan begrenzt
+        (ohne Authentifizierung mit konservativem Free-Limit).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                title:
+                  type: string
+                topicFocus:
+                  type: string
+                style:
+                  type: string
+                  enum: [erklärend, pruefungsnah, kompakt]
+                difficulty:
+                  type: string
+                  enum: [leicht, mittel, anspruchsvoll]
+                count:
+                  type: string
+                  description: Gewünschte Kartenanzahl; serverseitig planabhängig begrenzt.
+      responses:
+        '200':
+          description: Karten neu generiert
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/CreateDeckFromFileResponse'
+                  - type: object
+                    properties:
+                      mode:
+                        type: string
+                        enum: [alternate]
+        '400':
+          $ref: '#/components/responses/StructuredApiError400'
+        '413':
+          $ref: '#/components/responses/StructuredApiError413'
+        '422':
+          $ref: '#/components/responses/StructuredApiError422'
+        '500':
+          $ref: '#/components/responses/StructuredApiError500'
+        '504':
+          $ref: '#/components/responses/StructuredApiError504'
+
+  /api/ai/refine-card:
+    post:
+      tags: [AI]
+      summary: Einzelne Karte verfeinern
+      operationId: refineCard
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefineCardRequest'
+      responses:
+        '200':
+          description: Karte verfeinert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefineCardResponse'
+        '400':
+          $ref: '#/components/responses/StructuredApiError400'
+        '500':
+          $ref: '#/components/responses/StructuredApiError500'
+        '502':
+          description: KI-Antwort unvollständig
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredApiErrorResponse'
+
+  /api/evaluate:
+    post:
+      tags: [Evaluation]
+      summary: Gesprochene Antwort transkribieren und bewerten
+      operationId: evaluateAnswer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, questionId, deckId]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                questionId:
+                  type: string
+                deckId:
+                  type: string
+                evaluationMode:
+                  type: string
+                  enum: [graded, supportive]
+                speechSeconds:
+                  type: string
+                tzOffsetMinutes:
+                  type: string
+      responses:
+        '200':
+          description: Bewertung erzeugt
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/EvaluateGradedResponse'
+                  - $ref: '#/components/schemas/EvaluateSupportiveResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/public/stats:
+    get:
+      tags: [Public]
+      summary: Öffentliche Kennzahlen abrufen
+      operationId: getPublicStats
+      security: []
+      responses:
+        '200':
+          description: Kennzahlen geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicStatsResponse'
+
+  /api/account:
+    delete:
+      tags: [Account]
+      summary: Eigenen Account löschen
+      operationId: deleteAccount
+      responses:
+        '200':
+          description: Account gelöscht
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OkResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/account/profile:
+    put:
+      tags: [Account]
+      summary: Anzeigenamen aktualisieren
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountProfileUpdateRequest'
+      responses:
+        '200':
+          description: Profil aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountProfileUpdateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/account/dashboard:
+    get:
+      tags: [Account]
+      summary: Account-Dashboard-Daten laden
+      operationId: getAccountDashboard
+      parameters:
+        - in: query
+          name: tzOffsetMinutes
+          required: false
+          schema:
+            type: string
+          description: Zeitzonenoffset in Minuten zur Berechnung der Tagesnutzung.
+      responses:
+        '200':
+          description: Dashboard geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDashboardResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/account/danger:
+    post:
+      tags: [Account]
+      summary: Gefährliche Massenaktionen ausführen
+      operationId: runDangerAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DangerActionRequest'
+      responses:
+        '200':
+          description: Aktion ausgeführt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DangerActionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/billing/create-checkout-session:
+    post:
+      tags: [Billing]
+      summary: Stripe Checkout Session erstellen
+      operationId: createCheckoutSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckoutSessionRequest'
+      responses:
+        '200':
+          description: Checkout Session erstellt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateCheckoutSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/stripe/portal-session:
+    post:
+      tags: [Stripe]
+      summary: Stripe Billing Portal Session erstellen
+      operationId: createPortalSession
+      responses:
+        '200':
+          description: Portal Session erstellt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripePortalSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/stripe/subscription:
+    post:
+      tags: [Stripe]
+      summary: Stripe Abo kündigen oder reaktivieren
+      operationId: updateSubscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StripeSubscriptionActionRequest'
+      responses:
+        '200':
+          description: Abo-Status aktualisiert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StripeSubscriptionSnapshot'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Billing-Schema nicht migriert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/stripe/webhook:
+    post:
+      tags: [Stripe]
+      summary: Stripe Webhook Event verarbeiten
+      operationId: stripeWebhook
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/StripeSignatureHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Event akzeptiert
+        '400':
+          description: Ungültige Konfiguration oder Signatur
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Fehler bei der Webhook-Verarbeitung
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/auth/{nextauthPath}:
+    parameters:
+      - in: path
+        name: nextauthPath
+        required: true
+        schema:
+          type: string
+        description: NextAuth Catch-all Segment (z. B. `session`, `signin`, `callback/google`).
+    get:
+      tags: [Auth]
+      summary: NextAuth Catch-all (GET)
+      operationId: nextAuthGet
+      security: []
+      responses:
+        '200':
+          description: Erfolgreiche Antwort des NextAuth Handlers
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      tags: [Auth]
+      summary: NextAuth Catch-all (POST)
+      operationId: nextAuthPost
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Erfolgreiche Antwort des NextAuth Handlers
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+components:
+  securitySchemes:
+    NextAuthSession:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+    NextAuthSecureSession:
+      type: apiKey
+      in: cookie
+      name: __Secure-next-auth.session-token
+
+  parameters:
+    DeckIdQuery:
+      in: query
+      name: deckId
+      required: true
+      schema:
+        type: string
+      description: ID des Lernsets.
+    DeckIdPath:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+      description: ID des Lernsets.
+    StripeSignatureHeader:
+      in: header
+      name: stripe-signature
+      required: true
+      schema:
+        type: string
+      description: Stripe Webhook Signaturheader.
+
+  responses:
+    BadRequestError:
+      description: Ungültige Anfrage
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnauthorizedError:
+      description: Nicht authentifiziert
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFoundError:
+      description: Ressource nicht gefunden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Interner Serverfehler
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    StructuredApiError400:
+      description: Ungültige Anfrage
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StructuredApiErrorResponse'
+    StructuredApiError413:
+      description: Datei zu groß
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StructuredApiErrorResponse'
+    StructuredApiError422:
+      description: Dateiinhalt konnte nicht verarbeitet werden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StructuredApiErrorResponse'
+    StructuredApiError500:
+      description: KI-Verarbeitung fehlgeschlagen
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StructuredApiErrorResponse'
+    StructuredApiError504:
+      description: KI-Timeout
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StructuredApiErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    StructuredApiErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code:
+              type: string
+              enum:
+                - FILE_TOO_LARGE
+                - UNSUPPORTED_FILE_TYPE
+                - PARSING_ERROR
+                - EMPTY_DOCUMENT
+                - AI_TIMEOUT
+                - AI_RESPONSE_INVALID
+                - AI_GENERATION_FAILED
+                - INVALID_REQUEST
+            message:
+              type: string
+            retryable:
+              type: boolean
+
+    OkResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+
+    LearningStage:
+      type: string
+      enum: [intro, scaffolded, free]
+
+    ReviewOutcome:
+      type: string
+      enum: [known, review, wrong]
+
+    ProgressStats:
+      type: object
+      required: [known, learning, new]
+      properties:
+        known:
+          type: integer
+          minimum: 0
+        learning:
+          type: integer
+          minimum: 0
+        new:
+          type: integer
+          minimum: 0
+
+    ProgressResponse:
+      type: object
+      required: [stats, nextQuestionId, learningPhase, learningStage]
+      properties:
+        stats:
+          $ref: '#/components/schemas/ProgressStats'
+        nextQuestionId:
+          type: [integer, 'null']
+          minimum: 0
+        learningPhase:
+          $ref: '#/components/schemas/LearningStage'
+        learningStage:
+          $ref: '#/components/schemas/LearningStage'
+
+    ProgressPostRequest:
+      oneOf:
+        - $ref: '#/components/schemas/ProgressActionReset'
+        - $ref: '#/components/schemas/ProgressActionMarkSeen'
+        - $ref: '#/components/schemas/ProgressActionIntroReviewLater'
+        - $ref: '#/components/schemas/ProgressActionScaffoldedExplained'
+        - $ref: '#/components/schemas/ProgressActionSkipKnownUnknown'
+        - $ref: '#/components/schemas/ProgressActionReview'
+        - $ref: '#/components/schemas/ProgressActionReviewWithoutAction'
+
+    ProgressActionBase:
+      type: object
+      required: [deckId, action]
+      properties:
+        deckId:
+          type: string
+        action:
+          type: string
+
+    ProgressActionReset:
+      allOf:
+        - $ref: '#/components/schemas/ProgressActionBase'
+        - type: object
+          properties:
+            action:
+              type: string
+              enum: [reset]
+
+    ProgressActionMarkSeen:
+      allOf:
+        - $ref: '#/components/schemas/ProgressActionBase'
+        - type: object
+          required: [questionId]
+          properties:
+            action:
+              type: string
+              enum: [mark_seen]
+            questionId:
+              type: integer
+              minimum: 0
+
+    ProgressActionIntroReviewLater:
+      allOf:
+        - $ref: '#/components/schemas/ProgressActionBase'
+        - type: object
+          required: [questionId]
+          properties:
+            action:
+              type: string
+              enum: [intro_review_later]
+            questionId:
+              type: integer
+              minimum: 0
+
+    ProgressActionScaffoldedExplained:
+      allOf:
+        - $ref: '#/components/schemas/ProgressActionBase'
+        - type: object
+          required: [questionId]
+          properties:
+            action:
+              type: string
+              enum: [scaffolded_explained]
+            questionId:
+              type: integer
+              minimum: 0
+
+    ProgressActionSkipKnownUnknown:
+      allOf:
+        - $ref: '#/components/schemas/ProgressActionBase'
+        - type: object
+          required: [questionId]
+          properties:
+            action:
+              type: string
+              enum: [skip_known_unknown]
+            questionId:
+              type: integer
+              minimum: 0
+
+    ProgressActionReview:
+      allOf:
+        - $ref: '#/components/schemas/ProgressActionBase'
+        - type: object
+          required: [questionId, outcome]
+          properties:
+            action:
+              type: string
+              enum: [review]
+            questionId:
+              type: integer
+              minimum: 0
+            outcome:
+              $ref: '#/components/schemas/ReviewOutcome'
+
+    ProgressActionReviewWithoutAction:
+      type: object
+      required: [deckId, questionId, outcome]
+      properties:
+        deckId:
+          type: string
+        questionId:
+          type: integer
+          minimum: 0
+        outcome:
+          $ref: '#/components/schemas/ReviewOutcome'
+
+    QuestionState:
+      type: string
+      enum:
+        - unseen
+        - explained_with_help
+        - explained_freely
+        - skipped_known_unknown
+
+    QuestionItem:
+      type: object
+      required: [id, question, modelAnswer, seen, hasScaffoldedExplanation, state]
+      properties:
+        id:
+          type: integer
+          minimum: 0
+        question:
+          type: string
+        modelAnswer:
+          type: string
+        seen:
+          type: boolean
+        hasScaffoldedExplanation:
+          type: boolean
+        state:
+          $ref: '#/components/schemas/QuestionState'
+
+    QuestionsResponse:
+      type: object
+      required: [questions, deckTitle, deckLearningPhase]
+      properties:
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionItem'
+        deckTitle:
+          type: string
+        deckLearningPhase:
+          $ref: '#/components/schemas/LearningStage'
+
+    FileCardSummary:
+      type: object
+      required: [question, answer]
+      properties:
+        question:
+          type: string
+        answer:
+          type: string
+
+    FileItem:
+      type: object
+      required:
+        - id
+        - title
+        - filename
+        - createdAt
+        - totalQuestions
+        - known
+        - learning
+        - new
+        - lastEditedAt
+        - lastLearnedAt
+        - learningPhaseStatus
+        - searchText
+        - searchCards
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        filename:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        totalQuestions:
+          type: integer
+          minimum: 0
+        known:
+          type: integer
+          minimum: 0
+        learning:
+          type: integer
+          minimum: 0
+        new:
+          type: integer
+          minimum: 0
+        lastEditedAt:
+          type: string
+          format: date-time
+        lastLearnedAt:
+          type: string
+          format: date-time
+        learningPhaseStatus:
+          $ref: '#/components/schemas/LearningStage'
+        searchText:
+          type: string
+        searchCards:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileCardSummary'
+
+    FilesResponse:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileItem'
+
+    DeckCard:
+      type: object
+      required: [id, question, answer]
+      properties:
+        id:
+          type: string
+        question:
+          type: string
+        answer:
+          type: string
+
+    DeckResponse:
+      type: object
+      required: [id, title, hasBeenIntroduced, learningPhase, cards]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        hasBeenIntroduced:
+          type: boolean
+        learningPhase:
+          type: string
+          enum: [intro, scaffolded, free]
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeckCard'
+
+    DeckCardInput:
+      type: object
+      required: [question, answer]
+      properties:
+        id:
+          type: string
+        question:
+          type: string
+        answer:
+          type: string
+
+    DeckUpdateCardsRequest:
+      type: object
+      required: [title, cards]
+      properties:
+        title:
+          type: string
+        cards:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DeckCardInput'
+
+    DeckUpdateLearningStageRequest:
+      type: object
+      required: [learningStage]
+      properties:
+        learningStage:
+          $ref: '#/components/schemas/LearningStage'
+
+    DeckUpdateRequest:
+      oneOf:
+        - $ref: '#/components/schemas/DeckUpdateCardsRequest'
+        - $ref: '#/components/schemas/DeckUpdateLearningStageRequest'
+
+    AnalyticsEventRequest:
+      type: object
+      required: [event]
+      properties:
+        event:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+
+    AiCard:
+      type: object
+      required: [question, answer]
+      properties:
+        question:
+          type: string
+        answer:
+          type: string
+
+    AiSaveRequest:
+      type: object
+      required: [title, cards]
+      properties:
+        title:
+          type: string
+        cards:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AiCard'
+        fileName:
+          type: string
+
+    AiSaveResponse:
+      type: object
+      required: [deckId]
+      properties:
+        deckId:
+          type: string
+
+    AiGenerateRequest:
+      type: object
+      required: [title, text]
+      properties:
+        title:
+          type: string
+        text:
+          type: string
+        topicFocus:
+          type: string
+        style:
+          type: string
+        difficulty:
+          type: string
+        count:
+          type: integer
+
+    AiGenerateResponse:
+      type: object
+      required: [cards]
+      properties:
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiCard'
+
+    ExtractTextResponse:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+
+    DifficultyOption:
+      type: string
+      enum: [leicht, mittel, anspruchsvoll]
+
+    StyleOption:
+      type: string
+      enum: [erklärend, pruefungsnah, kompakt]
+
+    DerivedStats:
+      type: object
+      required: [wordCount, headingDensity, averageSentenceLength]
+      properties:
+        wordCount:
+          type: integer
+          minimum: 0
+        headingDensity:
+          type: number
+        averageSentenceLength:
+          type: number
+
+    DerivedGenerationParams:
+      type: object
+      required:
+        - suggestedTitle
+        - suggestedDifficulty
+        - suggestedQuestionCount
+        - suggestedStyle
+        - detectedTopics
+        - stats
+      properties:
+        suggestedTitle:
+          type: string
+        suggestedDifficulty:
+          $ref: '#/components/schemas/DifficultyOption'
+        suggestedQuestionCount:
+          type: integer
+          minimum: 2
+        suggestedStyle:
+          $ref: '#/components/schemas/StyleOption'
+        detectedTopics:
+          type: array
+          items:
+            type: string
+        stats:
+          $ref: '#/components/schemas/DerivedStats'
+
+    ResolvedGenerationParams:
+      type: object
+      required: [title, difficulty, count, style, topicFocus]
+      properties:
+        title:
+          type: string
+        difficulty:
+          $ref: '#/components/schemas/DifficultyOption'
+        count:
+          type: integer
+          minimum: 2
+        style:
+          $ref: '#/components/schemas/StyleOption'
+        topicFocus:
+          type: string
+
+    CreateDeckFromFileResponse:
+      type: object
+      required: [cards, params, derived, mode]
+      properties:
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiCard'
+        params:
+          $ref: '#/components/schemas/ResolvedGenerationParams'
+        derived:
+          $ref: '#/components/schemas/DerivedGenerationParams'
+        mode:
+          type: string
+          enum: [default, alternate]
+
+    RefineCardAction:
+      type: string
+      enum:
+        - expandAnswer
+        - condenseAnswer
+        - increaseDifficulty
+        - simplifyAnswer
+        - examOriented
+
+    RefineCardRequest:
+      type: object
+      required: [question, answer, action]
+      properties:
+        question:
+          type: string
+        answer:
+          type: string
+        action:
+          $ref: '#/components/schemas/RefineCardAction'
+        title:
+          type: string
+        style:
+          type: string
+        difficulty:
+          type: string
+        topicFocus:
+          type: string
+
+    RefineCardResponse:
+      type: object
+      required: [card]
+      properties:
+        card:
+          $ref: '#/components/schemas/AiCard'
+
+    EvaluateGradedResponse:
+      type: object
+      required: [score, feedback, userAnswer, modelAnswer, question]
+      properties:
+        score:
+          type: number
+        feedback:
+          type: string
+        userAnswer:
+          type: string
+        modelAnswer:
+          type: string
+        question:
+          type: string
+
+    EvaluateSupportiveResponse:
+      type: object
+      required: [feedback, userAnswer, modelAnswer, question]
+      properties:
+        feedback:
+          type: object
+          required: [type, message, recommendation, grading]
+          properties:
+            type:
+              type: string
+              enum: [supportive]
+            message:
+              type: string
+            recommendation:
+              type: string
+              enum: [understood, review_later]
+            grading:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+        userAnswer:
+          type: string
+        modelAnswer:
+          type: string
+        question:
+          type: string
+
+    PublicStatsResponse:
+      type: object
+      required: [usersCount, minutesExplained, decksCreated, documentsAnalyzed]
+      properties:
+        usersCount:
+          type: integer
+          minimum: 0
+        minutesExplained:
+          type: integer
+          minimum: 0
+        decksCreated:
+          type: integer
+          minimum: 0
+        documentsAnalyzed:
+          type: integer
+          minimum: 0
+
+    AccountProfileUpdateRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 60
+
+    AccountProfileUpdateResponse:
+      type: object
+      required: [ok, displayName]
+      properties:
+        ok:
+          type: boolean
+        displayName:
+          type: string
+
+    DangerActionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [reset_progress, delete_decks]
+
+    DangerActionResponse:
+      type: object
+      required: [ok, affectedDecks]
+      properties:
+        ok:
+          type: boolean
+        affectedDecks:
+          type: integer
+          minimum: 0
+
+    PlanTier:
+      type: string
+      enum: [free, premium, ultimate]
+
+    SubscriptionStatus:
+      type: string
+      enum: [active, cancel_at_period_end, past_due]
+
+    BillingInterval:
+      type: [string, 'null']
+      enum: [monthly, yearly, null]
+
+    LimitedValue:
+      oneOf:
+        - type: integer
+          minimum: 0
+        - type: string
+          enum: [unlimited]
+
+    PlanLimits:
+      type: object
+      required: [deckLimit, questionsPerDeck, speechSecondsPerDay, aiRefine]
+      properties:
+        deckLimit:
+          $ref: '#/components/schemas/LimitedValue'
+        questionsPerDeck:
+          $ref: '#/components/schemas/LimitedValue'
+        speechSecondsPerDay:
+          $ref: '#/components/schemas/LimitedValue'
+        aiRefine:
+          type: boolean
+
+    AccountDashboardResponse:
+      type: object
+      required:
+        - plan
+        - status
+        - currentPeriodEnd
+        - nextBillingAt
+        - billingInterval
+        - canManageSubscription
+        - limits
+        - allPlanLimits
+        - usage
+        - billing
+      properties:
+        plan:
+          $ref: '#/components/schemas/PlanTier'
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        currentPeriodEnd:
+          type: [string, 'null']
+          format: date-time
+        nextBillingAt:
+          type: [string, 'null']
+          format: date-time
+        billingInterval:
+          $ref: '#/components/schemas/BillingInterval'
+        canManageSubscription:
+          type: boolean
+        limits:
+          $ref: '#/components/schemas/PlanLimits'
+        allPlanLimits:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/PlanLimits'
+        usage:
+          type: object
+          required: [speechSecondsToday, decksCreated]
+          properties:
+            speechSecondsToday:
+              type: integer
+              minimum: 0
+            decksCreated:
+              type: integer
+              minimum: 0
+        billing:
+          type: object
+          required: [planLabels, planOrder, pricingCards, text]
+          properties:
+            planLabels:
+              type: object
+              additionalProperties:
+                type: string
+            planOrder:
+              type: object
+              additionalProperties:
+                type: integer
+            pricingCards:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            text:
+              type: object
+              additionalProperties: true
+
+    CreateCheckoutSessionRequest:
+      type: object
+      required: [plan, cycle]
+      properties:
+        plan:
+          type: string
+          enum: [premium, ultimate]
+        cycle:
+          type: string
+          enum: [monthly, yearly]
+        userEmail:
+          type: string
+          format: email
+        userId:
+          type: string
+
+    CreateCheckoutSessionResponse:
+      type: object
+      required: [url, plan, cycle, configuredPrice]
+      properties:
+        url:
+          type: string
+          format: uri
+        plan:
+          type: string
+          enum: [premium, ultimate]
+        cycle:
+          type: string
+          enum: [monthly, yearly]
+        configuredPrice:
+          type: number
+
+    StripePortalSessionResponse:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+
+    StripeSubscriptionActionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [cancel, resume]
+
+    StripeSubscriptionSnapshot:
+      type: object
+      required:
+        - plan
+        - status
+        - currentPeriodEnd
+        - nextBillingAt
+        - billingInterval
+        - subscriptionId
+        - customerId
+        - priceId
+      properties:
+        plan:
+          $ref: '#/components/schemas/PlanTier'
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        currentPeriodEnd:
+          type: [string, 'null']
+          format: date-time
+        nextBillingAt:
+          type: [string, 'null']
+          format: date-time
+        billingInterval:
+          $ref: '#/components/schemas/BillingInterval'
+        subscriptionId:
+          type: [string, 'null']
+        customerId:
+          type: [string, 'null']
+        priceId:
+          type: [string, 'null']

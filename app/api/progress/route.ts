@@ -11,6 +11,7 @@ import {
   getDeckByFilename,
   getDeckCards,
   markCardScaffoldedExplanation,
+  markCardSeenReviewLater,
   markCardSeenAndAdvanceDeck,
   resetDeckProgress,
 } from "@/lib/progress";
@@ -21,11 +22,13 @@ function toDisplayStats(
   progress: Array<{ status: string }>
 ) {
   if (learningStage === "intro") {
-    const known = cards.reduce((acc, card) => (card.seen ? acc + 1 : acc), 0);
+    const learning = progress.reduce((acc, item) => (item.status === "learning" ? acc + 1 : acc), 0);
+    const unseen = cards.reduce((acc, card) => (!card.seen ? acc + 1 : acc), 0);
+    const known = Math.max(0, cards.length - unseen - learning);
     return {
       known,
-      learning: 0,
-      new: Math.max(0, cards.length - known),
+      learning,
+      new: unseen,
     };
   }
 
@@ -116,6 +119,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     await markCardSeenAndAdvanceDeck({
+      userId: session.user.id,
+      deckId: deck.id,
+      cardId: card.id,
+    });
+  } else if (action === "intro_review_later") {
+    const questionId = body.questionId as number | undefined;
+    if (typeof questionId !== "number") {
+      return NextResponse.json({ error: "questionId is required" }, { status: 400 });
+    }
+
+    const cards = await getDeckCards(deck.id);
+    const card = cards[questionId];
+    if (!card) {
+      return NextResponse.json({ error: "Question not found" }, { status: 404 });
+    }
+
+    await markCardSeenReviewLater({
       userId: session.user.id,
       deckId: deck.id,
       cardId: card.id,

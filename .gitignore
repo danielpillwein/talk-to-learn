@@ -17,7 +17,6 @@
 /build
 
 # dev environment files
-/docs
 
 # misc
 .DS_Store
@@ -51,4 +50,5 @@ pnpm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 prd.md
+UI_Styleguide.md
 project_dump.txt

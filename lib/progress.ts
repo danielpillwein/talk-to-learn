@@ -102,27 +102,57 @@ export function computeNextQuestionId(
   progress: Array<{ cardId: string; status: string; nextReview: Date | null }>,
   cardIdToIndex: Map<string, number>
 ) {
+  const now = Date.now();
+
+  // Global priority across all stages: due learning cards first.
+  const dueLearning = progress
+    .filter((item) => item.status === "learning" && item.nextReview && item.nextReview.getTime() <= now)
+    .sort((a, b) => a.nextReview!.getTime() - b.nextReview!.getTime());
+
+  if (dueLearning.length > 0) {
+    return cardIdToIndex.get(dueLearning[0].cardId) ?? null;
+  }
+
   if (learningStage === "intro") {
     const nextUnseen = cards.find((card) => !card.seen);
-    return nextUnseen ? (cardIdToIndex.get(nextUnseen.id) ?? null) : null;
+    if (nextUnseen) {
+      return cardIdToIndex.get(nextUnseen.id) ?? null;
+    }
+
+    const introReviewQueue = progress
+      .filter((item) => item.status === "learning")
+      .sort((a, b) => {
+        const aTime = a.nextReview?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const bTime = b.nextReview?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      });
+
+    if (introReviewQueue.length > 0) {
+      return cardIdToIndex.get(introReviewQueue[0].cardId) ?? null;
+    }
+
+    return null;
   }
 
   if (learningStage === "scaffolded") {
+    const scaffoldedReviewQueue = progress
+      .filter((item) => item.status === "learning")
+      .sort((a, b) => {
+        const aTime = a.nextReview?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const bTime = b.nextReview?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      });
+    if (scaffoldedReviewQueue.length > 0) {
+      return cardIdToIndex.get(scaffoldedReviewQueue[0].cardId) ?? null;
+    }
+
     // In scaffolded stage, finish every card once before free explanation starts.
     const needsScaffold = cards.find((card) => !card.hasScaffoldedExplanation);
     if (needsScaffold) {
       return cardIdToIndex.get(needsScaffold.id) ?? null;
     }
-  }
 
-  const now = Date.now();
-
-  const due = progress
-    .filter((item) => item.status === "learning" && item.nextReview && item.nextReview.getTime() <= now)
-    .sort((a, b) => a.nextReview!.getTime() - b.nextReview!.getTime());
-
-  if (due.length > 0) {
-    return cardIdToIndex.get(due[0].cardId) ?? null;
+    return null;
   }
 
   const newCards = progress.filter((item) => item.status === "new");
@@ -199,12 +229,14 @@ export async function markCardSeenAndAdvanceDeck({
         userId,
         deckId,
         cardId,
-        status: "new",
+        status: "known",
         nextReview: new Date(),
-        reviewCount: 0,
+        reviewCount: 1,
         lastActionAt: new Date(),
       },
       update: {
+        status: "known",
+        reviewCount: { increment: 1 },
         lastActionAt: new Date(),
       },
     });
@@ -214,7 +246,70 @@ export async function markCardSeenAndAdvanceDeck({
     where: { deckId, seen: false },
   });
 
-  if (unseenCount === 0) {
+  const learningCount = await db.reviewProgress.count({
+    where: { userId, deckId, status: "learning" },
+  });
+
+  if (unseenCount === 0 && learningCount === 0) {
+    await db.deck.update({
+      where: { id: deckId, ownerId: userId },
+      data: {
+        hasBeenIntroduced: true,
+        learningPhase: "scaffolded",
+      },
+    });
+  }
+}
+
+export async function markCardSeenReviewLater({
+  userId,
+  deckId,
+  cardId,
+}: {
+  userId: string;
+  deckId: string;
+  cardId: string;
+}) {
+  const nextReview = new Date(Date.now() + REVIEW_WINDOWS.review);
+
+  await db.$transaction(async (tx) => {
+    await tx.card.update({
+      where: { id: cardId },
+      data: {
+        seen: true,
+        state: "unseen",
+      },
+    });
+
+    await tx.reviewProgress.upsert({
+      where: { userId_cardId: { userId, cardId } },
+      create: {
+        userId,
+        deckId,
+        cardId,
+        status: "learning",
+        nextReview,
+        reviewCount: 1,
+        lastActionAt: new Date(),
+      },
+      update: {
+        status: "learning",
+        nextReview,
+        reviewCount: { increment: 1 },
+        lastActionAt: new Date(),
+      },
+    });
+  });
+
+  const unseenCount = await db.card.count({
+    where: { deckId, seen: false },
+  });
+
+  const learningCount = await db.reviewProgress.count({
+    where: { userId, deckId, status: "learning" },
+  });
+
+  if (unseenCount === 0 && learningCount === 0) {
     await db.deck.update({
       where: { id: deckId, ownerId: userId },
       data: {

@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { auth } from "@/lib/auth";
+import { AI_MODELS } from "@/lib/ai/models";
+import { resolvePlanForUserId, resolveQuestionCountLimitForPlan } from "@/lib/account-plans";
 import {
   deriveGenerationParams,
   extractTextFromFile,
@@ -13,6 +16,9 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const formData = await request.formData();
+    const session = await auth();
+    const plan = await resolvePlanForUserId(session?.user?.id);
+    const maxQuestionCount = resolveQuestionCountLimitForPlan(plan);
     const file = formData.get("file") as File | null;
     const mode = String(formData.get("mode") ?? "default") === "alternate" ? "alternate" : "default";
     const { normalizedText, filename } = await extractTextFromFile(file);
@@ -24,6 +30,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       style: String(formData.get("style") ?? ""),
       difficulty: String(formData.get("difficulty") ?? ""),
       count: String(formData.get("count") ?? ""),
+      maxQuestionCount,
     });
 
     const cards = await generateCardsFromText({
@@ -32,6 +39,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       params,
       detectedTopics: derived.detectedTopics,
       mode,
+      model: AI_MODELS.GENERATION,
     });
 
     return NextResponse.json({
