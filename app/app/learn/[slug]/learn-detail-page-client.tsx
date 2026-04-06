@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/toast/useToast';
 import {
     ArrowLeftIcon,
     ArrowPathIcon,
+    ChevronRightIcon,
     CheckCircleIcon,
     MicrophoneIcon,
     StopIcon,
@@ -23,6 +24,7 @@ import {
     CheckCircleIcon as CheckCircleIconSolid,
     CheckIcon as CheckIconSolid,
     MicrophoneIcon as MicrophoneIconSolid,
+    SparklesIcon as SparklesIconSolid,
     StopIcon as StopIconSolid,
     XCircleIcon as XCircleIconSolid,
 } from '@heroicons/react/24/solid';
@@ -49,10 +51,16 @@ interface Question {
 
 interface SupportiveFeedback {
     type: 'supportive';
-    message: string;
+    shortFeedback: string;
+    improvement: string;
+    score: number;
+    content: number;
+    completeness: number;
+    understanding: number;
+    clarity: number;
     recommendation: 'understood' | 'review_later';
     grading: {
-        enabled: false;
+        enabled: true;
     };
 }
 
@@ -87,13 +95,75 @@ interface StageNotice {
     status: string;
     bullets: [string, string, string];
     ctaLabel: string;
+    secondaryCtaLabel?: string;
     progressLabel: string;
     otterMessage: string;
+    primaryAction?: 'dismiss' | 'restart_free';
+    secondaryAction?: 'back_to_overview';
 }
 
 const REVIEW_TRANSITION_MS = 180;
-const INTRO_PRIMARY_ACTION_LABEL = 'Verstanden';
-const INTRO_REVIEW_ACTION_LABEL = 'Nochmal üben';
+const INTRO_PRIMARY_ACTION_LABEL = 'Als verstanden markieren';
+const INTRO_REVIEW_ACTION_LABEL = 'Später wiederholen';
+const SUPPORTIVE_PRIMARY_ACTION_LABEL = INTRO_PRIMARY_ACTION_LABEL;
+const SUPPORTIVE_REVIEW_ACTION_LABEL = INTRO_REVIEW_ACTION_LABEL;
+const RECORDING_WAVE_BARS = 24;
+const RECORDING_WAVE_HISTORY_MS = 1000;
+
+function EvaluationState(): JSX.Element {
+    return (
+        <div className="w-full rounded-xl bg-foreground/10 px-4 py-3">
+            <div className="flex items-start gap-3">
+                <div className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground/10">
+                    <div className="loader loader-inline" aria-hidden="true">
+                        <div />
+                        <div />
+                        <div />
+                    </div>
+                </div>
+                <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">KI analysiert deine Antwort</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Dauert nur einen Moment</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ScoreGauge({ score }: { score: number }): JSX.Element {
+    const safeMax = 10;
+    const clampedScore = Math.min(Math.max(score, 0), safeMax);
+    const percent = (clampedScore / safeMax) * 100;
+
+    return (
+        <div className="relative w-[132px] shrink-0">
+            <svg viewBox="0 0 120 72" className="h-[88px] w-full" aria-hidden="true">
+                <path
+                    d="M12 60 A48 48 0 0 1 108 60"
+                    fill="none"
+                    stroke="rgba(255,255,255,0.14)"
+                    strokeWidth="10"
+                    strokeLinecap="round"
+                    pathLength={100}
+                />
+                <path
+                    d="M12 60 A48 48 0 0 1 108 60"
+                    fill="none"
+                    stroke="rgb(245 186 8)"
+                    strokeWidth="10"
+                    strokeLinecap="round"
+                    pathLength={100}
+                    strokeDasharray={`${percent} 100`}
+                />
+            </svg>
+            <div className="pointer-events-none absolute inset-x-0 bottom-[9px] text-center">
+                <span className="text-[1.55rem] font-semibold leading-none text-foreground tabular-nums">
+                    {clampedScore}/10
+                </span>
+            </div>
+        </div>
+    );
+}
 
 function resolveStageFromProgress(payload: {
     learningPhase: 'intro' | 'scaffolded' | 'free';
@@ -197,13 +267,27 @@ export default function LearnDetailPage(): JSX.Element {
     const [stats, setStats] = useState({ known: 0, learning: 0, new: 0 });
     const [knownUnknownRevealed, setKnownUnknownRevealed] = useState(false);
     const [showTranscript, setShowTranscript] = useState(false);
+    const [showModelAnswer, setShowModelAnswer] = useState(false);
     const [isSubmittingProgress, setIsSubmittingProgress] = useState(false);
     const [stageNotice, setStageNotice] = useState<StageNotice | null>(null);
+    const [isStageNoticeBusy, setIsStageNoticeBusy] = useState(false);
     const [isQuestionTransitionLoading, setIsQuestionTransitionLoading] = useState(false);
+    const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState(0);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingStartedAtRef = useRef<number | null>(null);
+    const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const waveformAnimationFrameRef = useRef<number | null>(null);
+    const waveformAudioContextRef = useRef<AudioContext | null>(null);
+    const waveformAnalyserRef = useRef<AnalyserNode | null>(null);
+    const waveformSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+    const waveformDataRef = useRef<Uint8Array | null>(null);
+    const waveformEnergyRef = useRef(0);
+    const waveformEnergyTimestampRef = useRef(0);
+    const waveformNoiseFloorRef = useRef(0.03);
+    const waveformHistoryRef = useRef<number[]>(Array.from({ length: RECORDING_WAVE_BARS }, () => 0));
+    const waveformHistoryLastPushRef = useRef(0);
     const srManagerRef = useRef<SpacedRepetitionManager | null>(null);
     const confettiTimeoutRef = useRef<number | null>(null);
 
@@ -243,6 +327,178 @@ export default function LearnDetailPage(): JSX.Element {
             confettiTimeoutRef.current = null;
         }, 220);
     }, []);
+
+    const stopWaveformVisualization = useCallback(() => {
+        if (waveformAnimationFrameRef.current !== null) {
+            window.cancelAnimationFrame(waveformAnimationFrameRef.current);
+            waveformAnimationFrameRef.current = null;
+        }
+
+        waveformSourceRef.current?.disconnect();
+        waveformAnalyserRef.current?.disconnect();
+
+        waveformSourceRef.current = null;
+        waveformAnalyserRef.current = null;
+        waveformDataRef.current = null;
+        waveformEnergyRef.current = 0;
+        waveformEnergyTimestampRef.current = 0;
+        waveformNoiseFloorRef.current = 0.03;
+        waveformHistoryRef.current = Array.from({ length: RECORDING_WAVE_BARS }, () => 0);
+        waveformHistoryLastPushRef.current = 0;
+
+        if (waveformAudioContextRef.current) {
+            const ctx = waveformAudioContextRef.current;
+            waveformAudioContextRef.current = null;
+            void ctx.close().catch(() => undefined);
+        }
+    }, []);
+
+    const startWaveformVisualization = useCallback(
+        async (stream: MediaStream) => {
+            try {
+                stopWaveformVisualization();
+
+                const AudioContextCtor =
+                    window.AudioContext ||
+                    ((window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext ?? null);
+                if (!AudioContextCtor) return;
+
+                const audioContext = new AudioContextCtor();
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume().catch(() => undefined);
+                }
+                const analyser = audioContext.createAnalyser();
+                analyser.fftSize = 512;
+                analyser.smoothingTimeConstant = 0.2;
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+
+                const freqData = new Uint8Array(analyser.frequencyBinCount);
+
+                waveformAudioContextRef.current = audioContext;
+                waveformAnalyserRef.current = analyser;
+                waveformSourceRef.current = source;
+                waveformDataRef.current = freqData;
+
+                const draw = () => {
+                    const canvas = waveformCanvasRef.current;
+                    const activeAnalyser = waveformAnalyserRef.current;
+                    const activeData = waveformDataRef.current;
+                    if (!activeAnalyser || !activeData) return;
+                    if (!canvas) {
+                        waveformAnimationFrameRef.current = window.requestAnimationFrame(draw);
+                        return;
+                    }
+
+                    activeAnalyser.getByteFrequencyData(activeData);
+
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        waveformAnimationFrameRef.current = window.requestAnimationFrame(draw);
+                        return;
+                    }
+
+                    const bounds = canvas.getBoundingClientRect();
+                    if (bounds.width === 0 || bounds.height === 0) {
+                        waveformAnimationFrameRef.current = window.requestAnimationFrame(draw);
+                        return;
+                    }
+
+                    const dpr = window.devicePixelRatio || 1;
+                    const displayWidth = Math.floor(bounds.width);
+                    const displayHeight = Math.floor(bounds.height);
+                    const renderWidth = Math.floor(displayWidth * dpr);
+                    const renderHeight = Math.floor(displayHeight * dpr);
+
+                    if (canvas.width !== renderWidth || canvas.height !== renderHeight) {
+                        canvas.width = renderWidth;
+                        canvas.height = renderHeight;
+                    }
+
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+                    const binsToUse = Math.min(144, activeData.length);
+                    let total = 0;
+                    let peak = 0;
+                    for (let i = 0; i < binsToUse; i += 1) {
+                        const value = activeData[i];
+                        total += value;
+                        if (value > peak) peak = value;
+                    }
+                    const avg = binsToUse > 0 ? total / (binsToUse * 255) : 0;
+                    const peakNorm = peak / 255;
+                    const energyRaw = Math.min(0.9, avg * 0.22 + peakNorm * 0.9);
+                    const now = performance.now();
+                    const dtMs = waveformEnergyTimestampRef.current > 0 ? now - waveformEnergyTimestampRef.current : 16.67;
+                    waveformEnergyTimestampRef.current = now;
+                    const noiseFloorAlpha = 1 - Math.exp(-dtMs / 2200);
+                    const currentNoiseFloor = waveformNoiseFloorRef.current;
+                    const noiseFollowAlpha =
+                        energyRaw < currentNoiseFloor + 0.045 ? noiseFloorAlpha : noiseFloorAlpha * 0.1;
+                    const nextNoiseFloor =
+                        currentNoiseFloor + (energyRaw - currentNoiseFloor) * noiseFollowAlpha;
+                    waveformNoiseFloorRef.current = Math.min(0.35, Math.max(0.01, nextNoiseFloor));
+                    const gate = waveformNoiseFloorRef.current + 0.028;
+                    const normalizedEnergy = Math.max(0, (energyRaw - gate) / Math.max(0.001, 1 - gate));
+                    const shapedEnergy = Math.min(1, Math.pow(normalizedEnergy, 0.85) * 1.15);
+                    const prevEnergy = waveformEnergyRef.current;
+                    const attackAlpha = 1 - Math.exp(-dtMs / 55);
+                    const releaseAlpha = 1 - Math.exp(-dtMs / 180);
+                    const alpha = shapedEnergy > prevEnergy ? attackAlpha : releaseAlpha;
+                    waveformEnergyRef.current = prevEnergy + (shapedEnergy - prevEnergy) * alpha;
+
+                    const historyIntervalMs = RECORDING_WAVE_HISTORY_MS / RECORDING_WAVE_BARS;
+                    if (waveformHistoryLastPushRef.current <= 0) {
+                        waveformHistoryLastPushRef.current = now;
+                    }
+
+                    while (now - waveformHistoryLastPushRef.current >= historyIntervalMs) {
+                        waveformHistoryLastPushRef.current += historyIntervalMs;
+                        const history = waveformHistoryRef.current;
+                        history.shift();
+                        history.push(Math.min(1, waveformEnergyRef.current * 0.78 + shapedEnergy * 0.22));
+                    }
+
+                    const centerY = displayHeight / 2;
+                    const barCount = RECORDING_WAVE_BARS;
+                    const gap = 4;
+                    const barWidth = Math.max(
+                        1.25,
+                        Math.min(3.2, (displayWidth - gap * (barCount - 1)) / barCount)
+                    );
+                    const startX = 0;
+                    const baseHeight = 2;
+                    const maxHeight = Math.max(16, Math.floor(displayHeight * 0.92));
+
+                    ctx.fillStyle = 'rgba(166, 228, 200, 0.9)';
+                    const history = waveformHistoryRef.current;
+                    for (let i = 0; i < barCount; i += 1) {
+                        const historyLevel = Math.min(1, Math.max(0, history[i] ?? 0));
+                        const liveLevel = Math.min(1, Math.pow(historyLevel, 0.9) * 1.02);
+                        const barHeight = Math.max(baseHeight, liveLevel * maxHeight);
+                        const x = startX + i * (barWidth + gap);
+                        const y = centerY - barHeight / 2;
+                        const radius = Math.min(barWidth / 2, barHeight / 2);
+                        if (typeof ctx.roundRect === 'function') {
+                            ctx.beginPath();
+                            ctx.roundRect(x, y, barWidth, barHeight, radius);
+                            ctx.fill();
+                        } else {
+                            ctx.fillRect(x, y, barWidth, barHeight);
+                        }
+                    }
+
+                    waveformAnimationFrameRef.current = window.requestAnimationFrame(draw);
+                };
+
+                waveformAnimationFrameRef.current = window.requestAnimationFrame(draw);
+            } catch {
+                stopWaveformVisualization();
+            }
+        },
+        [stopWaveformVisualization]
+    );
 
     const updateQuestionState = useCallback((questionIndex: number, patch: Partial<Question>) => {
         setQuestions((prev) =>
@@ -302,6 +558,7 @@ export default function LearnDetailPage(): JSX.Element {
                 setResult(null);
                 setKnownUnknownRevealed(false);
                 setShowTranscript(false);
+                setShowModelAnswer(false);
                 setStageNotice(null);
             } catch (err) {
                 toast.error('Lernset konnte nicht geladen werden.', 'Bitte versuche es erneut.');
@@ -319,8 +576,9 @@ export default function LearnDetailPage(): JSX.Element {
             if (confettiTimeoutRef.current !== null) {
                 window.clearTimeout(confettiTimeoutRef.current);
             }
+            stopWaveformVisualization();
         };
-    }, []);
+    }, [stopWaveformVisualization]);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && (window as any).MathJax) {
@@ -328,9 +586,115 @@ export default function LearnDetailPage(): JSX.Element {
         }
     }, [currentQuestionId, questions, result, knownUnknownRevealed]);
 
+    useEffect(() => {
+        if (typeof navigator === 'undefined') return;
+        if (!('permissions' in navigator) || typeof navigator.permissions?.query !== 'function') return;
+
+        let isCancelled = false;
+        let permissionStatus: PermissionStatus | null = null;
+
+        const syncPermission = () => {
+            if (!permissionStatus || isCancelled) return;
+            if (permissionStatus.state === 'granted') {
+                setMicPermission('granted');
+                return;
+            }
+            if (permissionStatus.state === 'denied') {
+                setMicPermission('denied');
+                return;
+            }
+            setMicPermission('prompt');
+        };
+
+        const bind = async () => {
+            try {
+                permissionStatus = await navigator.permissions.query({
+                    name: 'microphone' as PermissionName,
+                });
+                if (isCancelled) return;
+                syncPermission();
+                permissionStatus.addEventListener('change', syncPermission);
+            } catch {}
+        };
+
+        void bind();
+
+        return () => {
+            isCancelled = true;
+            permissionStatus?.removeEventListener('change', syncPermission);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isRecording) {
+            setRecordingElapsedSeconds(0);
+            return;
+        }
+
+        const updateElapsed = () => {
+            const startedAt = recordingStartedAtRef.current ?? Date.now();
+            const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+            setRecordingElapsedSeconds(elapsedSeconds);
+        };
+
+        updateElapsed();
+        const intervalId = window.setInterval(updateElapsed, 250);
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [isRecording]);
+
     const handleBackToSelection = () => {
         router.push('/app/learn');
     };
+
+    const handleStageNoticePrimary = useCallback(async () => {
+        if (!stageNotice || isStageNoticeBusy) return;
+
+        if (stageNotice.primaryAction === 'restart_free') {
+            if (!deckId) return;
+            setIsStageNoticeBusy(true);
+            try {
+                const response = await fetch(`/api/decks/${encodeURIComponent(deckId)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ learningStage: 'free' }),
+                });
+                if (!response.ok) throw new Error('Failed to restart free run');
+                const progressResponse = await fetch(`/api/progress?deckId=${encodeURIComponent(deckId)}`);
+                if (!progressResponse.ok) throw new Error('Failed to load deck progress after restart');
+                const progressData = (await progressResponse.json()) as ProgressResponse;
+
+                setCurrentQuestionId(progressData.nextQuestionId);
+                setStats(progressData.stats);
+                setLearningStage(resolveStageFromProgress(progressData));
+                setResult(null);
+                setKnownUnknownRevealed(false);
+                setShowTranscript(false);
+                setShowModelAnswer(false);
+                setIsQuestionTransitionLoading(false);
+                setStageNotice(null);
+            } catch (err) {
+                toast.error('Neuer Durchgang konnte nicht gestartet werden.', 'Bitte versuche es erneut.');
+                console.error(err);
+            } finally {
+                setIsStageNoticeBusy(false);
+            }
+            return;
+        }
+
+        setStageNotice(null);
+    }, [deckId, isStageNoticeBusy, router, stageNotice, toast]);
+
+    const handleStageNoticeSecondary = useCallback(() => {
+        if (!stageNotice || isStageNoticeBusy) return;
+        if (stageNotice.secondaryAction === 'back_to_overview') {
+            router.push('/app/learn');
+            return;
+        }
+        setStageNotice(null);
+    }, [isStageNoticeBusy, router, stageNotice]);
 
     const requestMicPermission = async () => {
         try {
@@ -349,6 +713,9 @@ export default function LearnDetailPage(): JSX.Element {
     const currentQuestion = currentQuestionId !== null ? questions[currentQuestionId] : null;
     const questionText = currentQuestion?.question ?? '';
     const answerText = currentQuestion?.modelAnswer ?? '';
+    const recordingDurationLabel = `${String(Math.floor(recordingElapsedSeconds / 60)).padStart(2, '0')}:${String(
+        recordingElapsedSeconds % 60
+    ).padStart(2, '0')}`;
     const displayStats = stats;
     const totalProgress = Math.max(1, displayStats.known + displayStats.learning + displayStats.new);
     const knownPct = Math.round((displayStats.known / totalProgress) * 100);
@@ -384,16 +751,17 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
 
     useEffect(() => {
         if (isLoadingQuestions) return;
+        if (stageNotice) return;
         if (currentQuestionId !== null) return;
         if (questions.length === 0) return;
         router.replace('/app/learn');
-    }, [currentQuestionId, isLoadingQuestions, questions.length, router]);
+    }, [currentQuestionId, isLoadingQuestions, questions.length, router, stageNotice]);
 
     const evaluateAnswer = async (audioBlob: Blob, speechSeconds: number) => {
         if (currentQuestionId === null || !deckId) return;
         setIsEvaluating(true);
 
-        const evaluationMode = cardMode === 'scaffolded' ? 'supportive' : 'graded';
+        const evaluationMode = cardMode === 'intro' ? 'graded' : 'supportive';
         const formData = new FormData();
         formData.append('file', audioBlob, 'recording.webm');
         formData.append('questionId', currentQuestionId.toString());
@@ -412,6 +780,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
 
             if (evaluationMode === 'supportive') {
                 setShowTranscript(false);
+                setShowModelAnswer(false);
                 setResult({
                     mode: 'supportive',
                     feedback: data.feedback,
@@ -421,6 +790,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
                 });
             } else {
                 setShowTranscript(false);
+                setShowModelAnswer(false);
                 setResult({
                     mode: 'graded',
                     score: data.score,
@@ -441,6 +811,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            await startWaveformVisualization(stream);
             const mediaRecorder = new MediaRecorder(stream);
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
@@ -455,6 +826,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
                 const elapsedMs = Math.max(0, Date.now() - startedAt);
                 const speechSeconds = Math.max(0, Math.round(elapsedMs / 1000));
                 recordingStartedAtRef.current = null;
+                stopWaveformVisualization();
                 await evaluateAnswer(audioBlob, speechSeconds);
                 stream.getTracks().forEach((track) => track.stop());
             };
@@ -465,11 +837,13 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
         } catch (err) {
             toast.error('Fehler beim Mikrofonzugriff.', 'Bitte prüfe deine Browser-Berechtigungen.');
             recordingStartedAtRef.current = null;
+            stopWaveformVisualization();
         }
     };
 
     const stopRecording = () => {
         if (mediaRecorderRef.current && isRecording) {
+            stopWaveformVisualization();
             mediaRecorderRef.current.stop();
             setIsRecording(false);
         }
@@ -497,6 +871,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
         setResult(null);
         setKnownUnknownRevealed(false);
         setShowTranscript(false);
+        setShowModelAnswer(false);
 
         if (previousStage === 'intro' && nextStage === 'scaffolded') {
             void playLevelUpConfetti();
@@ -511,8 +886,10 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
                 ctaLabel: 'Jetzt üben',
                 progressLabel: 'Level 2 von 3',
                 otterMessage: 'Starker Fortschritt. Weiter geht’s.',
+                primaryAction: 'dismiss',
             });
         } else if (previousStage === 'scaffolded' && nextStage === 'free') {
+            void playLevelUpConfetti();
             setStageNotice({
                 headline: 'Level Up!',
                 status: 'Erklären freigeschaltet',
@@ -523,7 +900,25 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
                 ],
                 ctaLabel: 'Jetzt erklären',
                 progressLabel: 'Level 3 von 3',
-                otterMessage: 'Der Otter sagt: Sehr stark, jetzt kommt freies Abrufen.',
+                otterMessage: 'Jetzt zählt, was du wirklich kannst.',
+                primaryAction: 'dismiss',
+            });
+        } else if (previousStage === 'free' && nextStage === 'free' && data.nextQuestionId === null) {
+            void playLevelUpConfetti();
+            setStageNotice({
+                headline: 'Stark!',
+                status: 'Du hast dieses Deck komplett durch.',
+                bullets: [
+                    'Alle Karten in diesem Durchgang sind abgeschlossen.',
+                    'Für langfristiges Lernen lohnt sich ein neuer Durchgang.',
+                    'Oder spring zurück und wähle ein anderes Lernset.',
+                ],
+                ctaLabel: 'Neuen Durchgang starten',
+                secondaryCtaLabel: 'Zur Lernset-Übersicht',
+                progressLabel: 'Deck abgeschlossen',
+                otterMessage: 'Jetzt zählt’s richtig: nächster Durchgang oder neues Set.',
+                primaryAction: 'restart_free',
+                secondaryAction: 'back_to_overview',
             });
         } else {
             setStageNotice(null);
@@ -638,6 +1033,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
             setStats(srManagerRef.current.getStats());
             setResult(null);
             setKnownUnknownRevealed(false);
+            setShowModelAnswer(false);
         }
 
         await new Promise((resolve) => setTimeout(resolve, REVIEW_TRANSITION_MS));
@@ -646,7 +1042,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
     }, [currentQuestionId, deckId, reviewLoading, learningStage, postProgress, applyProgressResponse, updateQuestionState]);
 
     const isSupportiveDecisionVisible =
-        !stageNotice && cardMode === 'scaffolded' && result?.mode === 'supportive';
+        !stageNotice && cardMode !== 'intro' && result?.mode === 'supportive';
     const isIntroDecisionVisible = !stageNotice && cardMode === 'intro' && !result;
 
     useEffect(() => {
@@ -709,7 +1105,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [isIntroDecisionVisible, isSubmittingProgress, handleIntroNext, handleIntroReviewLater]);
 
-    if (isLoadingQuestions || currentQuestionId === null) {
+    if (isLoadingQuestions || (currentQuestionId === null && !stageNotice)) {
         return <LearnDetailSkeleton stage={learningStage} onBack={handleBackToSelection} />;
     }
 
@@ -880,84 +1276,162 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
                                     )}
                                 </h2>
 
-                                {cardMode === 'scaffolded' && result?.mode === 'supportive' ? (
+                                {result?.mode === 'supportive' ? (
                                     <>
                                         <hr className="-mx-6 border-border" />
                                         <div className="space-y-4">
-                                            <div>
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <h3 className="text-sm font-medium text-muted-foreground">KI-Einschätzung</h3>
-                                                    <span className="inline-flex items-center gap-1.5 rounded-[999px] bg-accent px-2.5 py-1 text-xs font-medium text-foreground">
-                                                        <span
-                                                            className={`h-2.5 w-2.5 rounded-full ${
-                                                                result.feedback.recommendation === 'understood'
-                                                                    ? 'bg-success'
-                                                                    : 'bg-warning'
-                                                            }`}
-                                                            aria-hidden="true"
-                                                        ></span>
-                                                        <span>
-                                                            {result.feedback.recommendation === 'understood'
-                                                                ? 'verstanden'
-                                                                : 'später nochmal fragen'}
-                                                        </span>
-                                                    </span>
+                                            <div className="rounded-2xl bg-foreground/5 p-4">
+                                                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                                                    <div className="flex justify-center sm:block">
+                                                        <ScoreGauge score={result.feedback.score} />
+                                                    </div>
+                                                    <div className="hidden h-16 w-px bg-border sm:block" />
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                                                            <SparklesIconSolid
+                                                                className="h-4 w-4 text-muted-foreground"
+                                                                aria-hidden="true"
+                                                            />
+                                                            <span>Feedback</span>
+                                                        </div>
+                                                        <p className="mt-2 text-base font-normal leading-relaxed text-foreground">
+                                                            {result.feedback.shortFeedback}
+                                                        </p>
+                                                        <p className="mt-2 text-base font-normal leading-relaxed text-foreground">
+                                                            {result.feedback.improvement}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <p className="mt-2 text-sm font-medium text-foreground">{result.feedback.message}</p>
                                             </div>
                                             <hr className="-mx-6 border-border" />
                                             <div>
-                                                <h3 className="text-sm font-medium text-muted-foreground">Musterlösung</h3>
-                                                <div className="mt-2 max-h-52 overflow-y-auto pr-1 text-sm leading-relaxed text-foreground">
-                                                    {isQuestionTransitionLoading ? (
-                                                        <div className="space-y-2">
-                                                            <div className="skeleton h-4 w-full rounded-md" />
-                                                            <div className="skeleton h-4 w-11/12 rounded-md" />
-                                                            <div className="skeleton h-4 w-4/5 rounded-md" />
-                                                        </div>
-                                                    ) : (
-                                                        answerText
-                                                    )}
-                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowModelAnswer((prev) => !prev)}
+                                                    className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                                                    aria-expanded={showModelAnswer}
+                                                >
+                                                    <ChevronRightIcon
+                                                        className={`h-4 w-4 transition-transform ${showModelAnswer ? 'rotate-90' : ''}`}
+                                                    />
+                                                    <span>Musterlösung</span>
+                                                </button>
+                                                {showModelAnswer && (
+                                                    <div className="mt-2 rounded-xl bg-secondary/25 p-3">
+                                                        <p className="mt-1 max-h-44 overflow-y-auto pr-1 text-sm leading-relaxed text-foreground">
+                                                        {isQuestionTransitionLoading ? (
+                                                            <div className="space-y-2">
+                                                                <div className="skeleton h-4 w-full rounded-md" />
+                                                                <div className="skeleton h-4 w-11/12 rounded-md" />
+                                                                <div className="skeleton h-4 w-4/5 rounded-md" />
+                                                            </div>
+                                                        ) : (
+                                                            answerText
+                                                        )}
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div>
-                                                <Button
+                                                <button
                                                     type="button"
-                                                    variant="outline"
-                                                    size="sm"
                                                     onClick={() => setShowTranscript((prev) => !prev)}
-                                                    className="h-8 rounded-lg px-3 text-xs"
+                                                    className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                                                    aria-expanded={showTranscript}
                                                 >
-                                                    {showTranscript ? 'Meine Antwort ausblenden' : 'Meine Antwort anzeigen'}
-                                                </Button>
+                                                    <ChevronRightIcon
+                                                        className={`h-4 w-4 transition-transform ${showTranscript ? 'rotate-90' : ''}`}
+                                                    />
+                                                    <span>Meine Antwort</span>
+                                                </button>
                                                 {showTranscript && (
                                                     <div className="mt-2 rounded-xl bg-secondary/25 p-3">
-                                                        <h4 className="text-xs font-medium text-muted-foreground">Deine Antwort</h4>
                                                         <p className="mt-1 max-h-44 overflow-y-auto pr-1 text-sm leading-relaxed text-foreground">
                                                             {result.userAnswer}
                                                         </p>
                                                     </div>
                                                 )}
                                             </div>
+                                            <div className="pt-1">
+                                                <div className="flex flex-wrap gap-2">
+                                                    <Button
+                                                        onClick={() => handleReview('known')}
+                                                        variant="default"
+                                                        disabled={reviewLoading !== null}
+                                                        isLoading={reviewLoading === 'known'}
+                                                        loadingText="Speichere"
+                                                        aria-label={SUPPORTIVE_PRIMARY_ACTION_LABEL}
+                                                        className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
+                                                    >
+                                                        <CheckIconSolid className="h-4 w-4 shrink-0" />
+                                                        <span>{SUPPORTIVE_PRIMARY_ACTION_LABEL}</span>
+                                                    </Button>
+                                                    <Button
+                                                        onClick={() => handleReview('review')}
+                                                        variant="outline"
+                                                        disabled={reviewLoading !== null}
+                                                        isLoading={reviewLoading === 'review'}
+                                                        loadingText="Speichere"
+                                                        aria-label={SUPPORTIVE_REVIEW_ACTION_LABEL}
+                                                        className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
+                                                    >
+                                                        <ArrowPathIcon className="h-4 w-4 shrink-0" />
+                                                        <span>{SUPPORTIVE_REVIEW_ACTION_LABEL}</span>
+                                                    </Button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </>
                                 ) : (
-                                    (cardMode === 'scaffolded' || knownUnknownRevealed || !!result) && (
+                                    (cardMode === 'scaffolded' || !!result || knownUnknownRevealed) && (
                                         <>
                                             <hr className="-mx-6 border-border" />
                                             <div>
-                                                <h3 className="text-sm font-medium text-muted-foreground">Musterlösung</h3>
-                                                <div className="mt-2 text-base leading-relaxed text-foreground">
-                                                    {isQuestionTransitionLoading ? (
-                                                        <div className="space-y-2">
-                                                            <div className="skeleton h-5 w-full rounded-md" />
-                                                            <div className="skeleton h-5 w-11/12 rounded-md" />
-                                                            <div className="skeleton h-5 w-4/5 rounded-md" />
+                                                {!!result ? (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowModelAnswer((prev) => !prev)}
+                                                            className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                                                            aria-expanded={showModelAnswer}
+                                                        >
+                                                            <ChevronRightIcon
+                                                                className={`h-4 w-4 transition-transform ${
+                                                                    showModelAnswer ? 'rotate-90' : ''
+                                                                }`}
+                                                            />
+                                                            <span>Musterlösung</span>
+                                                        </button>
+                                                        {showModelAnswer && (
+                                                            <div className="mt-2 text-base leading-relaxed text-foreground">
+                                                                {isQuestionTransitionLoading ? (
+                                                                    <div className="space-y-2">
+                                                                        <div className="skeleton h-5 w-full rounded-md" />
+                                                                        <div className="skeleton h-5 w-11/12 rounded-md" />
+                                                                        <div className="skeleton h-5 w-4/5 rounded-md" />
+                                                                    </div>
+                                                                ) : (
+                                                                    answerText
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <h3 className="text-sm font-medium text-muted-foreground">Musterlösung</h3>
+                                                        <div className="mt-2 text-base leading-relaxed text-foreground">
+                                                            {isQuestionTransitionLoading ? (
+                                                                <div className="space-y-2">
+                                                                    <div className="skeleton h-5 w-full rounded-md" />
+                                                                    <div className="skeleton h-5 w-11/12 rounded-md" />
+                                                                    <div className="skeleton h-5 w-4/5 rounded-md" />
+                                                                </div>
+                                                            ) : (
+                                                                answerText
+                                                            )}
                                                         </div>
-                                                    ) : (
-                                                        answerText
-                                                    )}
-                                                </div>
+                                                    </>
+                                                )}
                                             </div>
                                         </>
                                     )
@@ -966,68 +1440,63 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
                                 {!stageNotice && !result && (
                                     <div className="pt-1">
                                         {knownUnknownRevealed ? (
-                                            <>
-                                                <Card className="w-full border-border bg-secondary">
-                                                    <CardContent className="p-4 text-center space-y-2">
-                                                        <p className="font-medium">Völlig okay - genau dafür ist Lernen da.</p>
-                                                    </CardContent>
-                                                </Card>
-                                                <Button
-                                                    size="lg"
-                                                    onClick={handleSkipKnownUnknown}
-                                                    className="group mt-4 w-full py-8 text-lg rounded-xl"
-                                                    disabled={isSubmittingProgress}
-                                                >
-                                                    Weiter
-                                                </Button>
-                                            </>
+                                            <Button
+                                                onClick={handleSkipKnownUnknown}
+                                                disabled={isSubmittingProgress}
+                                                className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
+                                            >
+                                                <ArrowPathIcon className="h-4 w-4 shrink-0" />
+                                                <span>{SUPPORTIVE_REVIEW_ACTION_LABEL}</span>
+                                            </Button>
                                         ) : (
-                                            <div className="flex flex-col items-center gap-4">
-
-                                                {cardMode === 'free' && (
-                                                    <Button
-                                                        size="lg"
-                                                        variant="outline"
-                                                        onClick={() => setKnownUnknownRevealed(true)}
-                                                        className="group w-full py-8 text-lg rounded-xl"
-                                                    >
-                                                        Ich weiß es noch nicht
-                                                    </Button>
-                                                )}
+                                            <div className="flex flex-col items-start gap-4">
 
                                                 {micPermission === 'prompt' ? (
                                                     <LoadingButton
                                                         onClick={requestMicPermission}
-                                                        className="group h-10 w-full rounded-xl px-4 text-sm"
+                                                        className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
                                                         isLoading={isRequestingMic}
                                                         loadingText="Prüfe"
                                                         text="Mikrofon erlauben"
                                                         startIcon={
-                                                            <IconSwap
-                                                                outline={MicrophoneIcon}
-                                                                solid={MicrophoneIconSolid}
-                                                                className="h-5 w-5"
-                                                            />
+                                                            <MicrophoneIconSolid className="h-5 w-5" />
                                                         }
                                                     />
                                                 ) : !isRecording && !isEvaluating ? (
-                                                    <Button onClick={startRecording} className="group h-10 w-full gap-1.5 rounded-xl px-4 text-sm leading-none">
-                                                        <IconSwap
-                                                            outline={MicrophoneIcon}
-                                                            solid={MicrophoneIconSolid}
-                                                            className="h-5 w-5 items-center justify-center"
-                                                        />
-                                                        <span>Sags in deinen eigenen Worten</span>
-                                                    </Button>
-                                                ) : isRecording ? (
-                                                    <Button onClick={stopRecording} variant="destructive" className="group h-10 w-full gap-1.5 rounded-xl px-4 text-sm leading-none animate-pulse">
-                                                        <StopIconSolid className="h-5 w-5 shrink-0" />
-                                                        <span>Stop</span>
-                                                    </Button>
-                                                ) : (
-                                                    <div className="flex items-center gap-2 py-4 text-muted-foreground">
-                                                        <ArrowPathIcon className="h-4 w-4 animate-spin" /> Auswertung...
+                                                    <div className="flex w-full flex-wrap gap-2">
+                                                        <Button
+                                                            onClick={startRecording}
+                                                            className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
+                                                        >
+                                                            <MicrophoneIconSolid className="h-5 w-5 items-center justify-center" />
+                                                            <span>Sags in deinen eigenen Worten</span>
+                                                        </Button>
+                                                        {cardMode === 'free' ? (
+                                                            <Button
+                                                                variant="outline"
+                                                                onClick={() => setKnownUnknownRevealed(true)}
+                                                                className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
+                                                            >
+                                                                Ich weiß es nicht
+                                                            </Button>
+                                                        ) : null}
                                                     </div>
+                                                ) : isRecording ? (
+                                                    <div className="grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
+                                                        <Button
+                                                            onClick={stopRecording}
+                                                            variant="destructive"
+                                                            className="h-10 shrink-0 rounded-xl px-4 text-sm animate-pulse"
+                                                        >
+                                                            <StopIconSolid className="h-5 w-5 shrink-0" />
+                                                            <span className="tabular-nums">Stop · {recordingDurationLabel}</span>
+                                                        </Button>
+                                                        <div className="h-10 min-w-0 rounded-xl bg-foreground/10 px-3 py-2">
+                                                            <canvas ref={waveformCanvasRef} className="block h-full w-full" />
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <EvaluationState />
                                                 )}
                                             </div>
                                         )}
@@ -1037,36 +1506,7 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
                         </Card>
                     )}
 
-                    {stageNotice || cardMode === 'intro' || !result ? null : result.mode === 'supportive' ? (
-                        <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4">
-                            <div className="flex flex-wrap gap-2">
-                                <Button
-                                    onClick={() => handleReview('known')}
-                                    variant="default"
-                                    disabled={reviewLoading !== null}
-                                    isLoading={reviewLoading === 'known'}
-                                    loadingText="Speichere"
-                                    aria-label={INTRO_PRIMARY_ACTION_LABEL}
-                                    className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
-                                >
-                                    <CheckIconSolid className="h-4 w-4 shrink-0" />
-                                    <span>{INTRO_PRIMARY_ACTION_LABEL}</span>
-                                </Button>
-                                <Button
-                                    onClick={() => handleReview('review')}
-                                    variant="outline"
-                                    disabled={reviewLoading !== null}
-                                    isLoading={reviewLoading === 'review'}
-                                    loadingText="Speichere"
-                                    aria-label={INTRO_REVIEW_ACTION_LABEL}
-                                    className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
-                                >
-                                    <ArrowPathIcon className="h-4 w-4 shrink-0" />
-                                    <span>{INTRO_REVIEW_ACTION_LABEL}</span>
-                                </Button>
-                            </div>
-                        </div>
-                    ) : (
+                    {stageNotice || cardMode === 'intro' || !result || result.mode === 'supportive' ? null : (
                         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
                             <Card
                                 className={`border-2 ${
@@ -1197,12 +1637,25 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
                                         </div>
                                     </div>
 
-                                    <Button
-                                        onClick={() => setStageNotice(null)}
-                                        className="h-11 w-full rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/95"
-                                    >
-                                        {stageNotice.ctaLabel}
-                                    </Button>
+                                    <div className="space-y-2">
+                                        <Button
+                                            onClick={() => void handleStageNoticePrimary()}
+                                            disabled={isStageNoticeBusy}
+                                            className="h-11 w-full rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/95"
+                                        >
+                                            {stageNotice.ctaLabel}
+                                        </Button>
+                                        {stageNotice.secondaryCtaLabel ? (
+                                            <Button
+                                                onClick={handleStageNoticeSecondary}
+                                                disabled={isStageNoticeBusy}
+                                                variant="outline"
+                                                className="h-11 w-full rounded-xl border-white/15 bg-transparent text-sm font-medium text-white/90 hover:bg-white/5"
+                                            >
+                                                {stageNotice.secondaryCtaLabel}
+                                            </Button>
+                                        ) : null}
+                                    </div>
                                 </CardContent>
                             </Card>
                         </div>

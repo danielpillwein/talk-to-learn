@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -279,6 +279,7 @@ function LearnDeckListSkeleton(): JSX.Element {
 }
 
 export default function LearnIndexPage(): JSX.Element {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const toast = useToast();
     const hasPlayedConfetti = useRef(false);
@@ -291,6 +292,8 @@ export default function LearnIndexPage(): JSX.Element {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOption, setSortOption] = useState<SortOption>(DEFAULT_SORT);
     const [isHeroCompact, setIsHeroCompact] = useState(false);
+    const [completedDeckPrompt, setCompletedDeckPrompt] = useState<FileStats | null>(null);
+    const [isRestartingCompletedDeck, setIsRestartingCompletedDeck] = useState(false);
     const clearSearch = () => {
         setSearchInput('');
         setSearchTerm('');
@@ -465,6 +468,61 @@ export default function LearnIndexPage(): JSX.Element {
     }, [searchParams, isLoadingFiles, toast]);
 
     const toSlug = (id: string) => encodeURIComponent(id);
+    const isDeckCompleted = (file: FileStats) => file.totalQuestions > 0 && file.new === 0 && file.learning === 0;
+
+    const handleLearnClick = useCallback(
+        (file: FileStats) => {
+            if (isDeckCompleted(file)) {
+                setCompletedDeckPrompt(file);
+                return;
+            }
+            router.push(`/app/learn/${encodeURIComponent(file.id)}`);
+        },
+        [router]
+    );
+
+    const handleRestartCompletedDeck = useCallback(async () => {
+        if (!completedDeckPrompt || isRestartingCompletedDeck) return;
+        const targetDeckId = completedDeckPrompt.id;
+        setIsRestartingCompletedDeck(true);
+        try {
+            const response = await fetch(`/api/decks/${encodeURIComponent(targetDeckId)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ learningStage: 'free' }),
+            });
+            if (!response.ok) {
+                let message = 'Neuer Durchgang konnte nicht gestartet werden.';
+                try {
+                    const payload = (await response.json()) as { error?: string };
+                    if (payload?.error) message = payload.error;
+                } catch {}
+                throw new Error(message);
+            }
+
+            const progressResponse = await fetch(`/api/progress?deckId=${encodeURIComponent(targetDeckId)}`, {
+                cache: 'no-store',
+            });
+            if (!progressResponse.ok) {
+                throw new Error('Fortschritt konnte nicht geladen werden.');
+            }
+            const progressPayload = (await progressResponse.json()) as {
+                nextQuestionId: number | null;
+            };
+            if (progressPayload.nextQuestionId === null) {
+                throw new Error('Für dieses Deck sind aktuell keine Fragen verfügbar.');
+            }
+
+            setCompletedDeckPrompt(null);
+            router.push(`/app/learn/${encodeURIComponent(targetDeckId)}`);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Neuer Durchgang konnte nicht gestartet werden.';
+            toast.error(message, 'Bitte versuche es erneut.');
+            console.error(err);
+        } finally {
+            setIsRestartingCompletedDeck(false);
+        }
+    }, [completedDeckPrompt, isRestartingCompletedDeck, router, toast]);
 
     const getPhaseMeta = (phase?: FileStats['learningPhaseStatus']) => {
         if (phase === 'intro') {
@@ -552,6 +610,7 @@ export default function LearnIndexPage(): JSX.Element {
     }, [items, searchTerm, sortOption]);
 
     return (
+        <>
         <div className="relative">
             <div className="relative flex flex-col gap-6">
                 <div className="space-y-2">
@@ -648,9 +707,7 @@ export default function LearnIndexPage(): JSX.Element {
                                                         </svg>
                                                     </InfoTooltip>
                                                 </span>
-                                                <Button asChild>
-                                                    <Link href={`/app/learn/${toSlug(file.id)}`}>Lernen</Link>
-                                                </Button>
+                                                <Button onClick={() => handleLearnClick(file)}>Lernen</Button>
                                                 <Button variant="outline" asChild>
                                                     <Link href={`/app/learn/edit/${toSlug(file.id)}`}>
                                                         <span className="inline-flex items-center gap-1">
@@ -731,5 +788,38 @@ export default function LearnIndexPage(): JSX.Element {
                 )}
             </div>
         </div>
+        {completedDeckPrompt && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/35 p-4 backdrop-blur-sm">
+                <Card className="w-full max-w-md border border-white/10 bg-card">
+                    <CardContent className="space-y-5 p-5">
+                        <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Fortschritt</p>
+                            <h3 className="text-xl font-semibold text-foreground">Deck abgeschlossen</h3>
+                            <p className="text-sm leading-relaxed text-muted-foreground">
+                                Stark gemacht, dieses Deck sitzt. Wenn du jetzt nochmal übst, festigst du das Wissen langfristig.
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            <Button
+                                onClick={() => void handleRestartCompletedDeck()}
+                                disabled={isRestartingCompletedDeck}
+                                className="h-11 w-full rounded-xl"
+                            >
+                                {isRestartingCompletedDeck ? 'Starte Übung…' : 'Nochmal üben'}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={() => setCompletedDeckPrompt(null)}
+                                disabled={isRestartingCompletedDeck}
+                                className="h-11 w-full rounded-xl"
+                            >
+                                Abbrechen
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        )}
+        </>
     );
 }

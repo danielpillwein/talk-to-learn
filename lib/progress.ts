@@ -126,7 +126,6 @@ export function computeNextQuestionId(
         const bTime = b.nextReview?.getTime() ?? Number.MAX_SAFE_INTEGER;
         return aTime - bTime;
       });
-
     if (introReviewQueue.length > 0) {
       return cardIdToIndex.get(introReviewQueue[0].cardId) ?? null;
     }
@@ -135,6 +134,11 @@ export function computeNextQuestionId(
   }
 
   if (learningStage === "scaffolded") {
+    const needsScaffold = cards.find((card) => !card.hasScaffoldedExplanation);
+    if (needsScaffold) {
+      return cardIdToIndex.get(needsScaffold.id) ?? null;
+    }
+
     const scaffoldedReviewQueue = progress
       .filter((item) => item.status === "learning")
       .sort((a, b) => {
@@ -146,12 +150,6 @@ export function computeNextQuestionId(
       return cardIdToIndex.get(scaffoldedReviewQueue[0].cardId) ?? null;
     }
 
-    // In scaffolded stage, finish every card once before free explanation starts.
-    const needsScaffold = cards.find((card) => !card.hasScaffoldedExplanation);
-    if (needsScaffold) {
-      return cardIdToIndex.get(needsScaffold.id) ?? null;
-    }
-
     return null;
   }
 
@@ -161,8 +159,8 @@ export function computeNextQuestionId(
     return cardIdToIndex.get(pick.cardId) ?? null;
   }
 
-  // If nothing is open/new, keep showing learning/review cards
-  // even when their nextReview is in the future.
+  // If no fresh cards remain, continue processing learning cards
+  // so the run only ends when everything is known.
   const learningCards = progress
     .filter((item) => item.status === "learning")
     .sort((a, b) => {

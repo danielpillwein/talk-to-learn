@@ -19,6 +19,23 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
+function clampInt(value: unknown, min: number, max: number): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return min;
+    const rounded = Math.round(value);
+    return Math.max(min, Math.min(max, rounded));
+}
+
+function normalizeRecommendation(raw: unknown, score: number): 'understood' | 'review_later' {
+    const value = typeof raw === 'string' ? raw.toLowerCase().trim() : '';
+    if (value === 'review_later' || value === 'review' || value === 'später' || value === 'spaeter') {
+        return 'review_later';
+    }
+    if (value === 'understood' || value === 'verstanden') {
+        return score >= 7 ? 'understood' : 'review_later';
+    }
+    return score >= 7 ? 'understood' : 'review_later';
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
     try {
         const session = await auth();
@@ -113,24 +130,51 @@ export async function POST(request: Request): Promise<NextResponse> {
         const result = JSON.parse(completion.choices[0].message.content || '{}');
 
         if (evaluationMode === 'supportive') {
-            const rawRecommendation =
-                typeof result.recommendation === 'string' ? result.recommendation.toLowerCase().trim() : '';
-            const normalizedRecommendation =
-                rawRecommendation === 'understood' || rawRecommendation === 'verstanden'
-                    ? 'understood'
-                    : rawRecommendation === 'review_later' ||
-                      rawRecommendation === 'review' ||
-                      rawRecommendation === 'später' ||
-                      rawRecommendation === 'spaeter'
-                    ? 'review_later'
-                    : 'understood';
+            const offTopic = Boolean(result.off_topic);
+            const content = clampInt(result.content, 0, 4);
+            const completeness = clampInt(result.completeness, 0, 3);
+            const understanding = clampInt(result.understanding, 0, 2);
+            const clarity = clampInt(result.clarity, 0, 1);
+
+            const rubricScore = content + completeness + understanding + clarity;
+            const parsedModelScore = clampInt(result.score, 0, 10);
+            const hasRubric =
+                typeof result.content === 'number' ||
+                typeof result.completeness === 'number' ||
+                typeof result.understanding === 'number' ||
+                typeof result.clarity === 'number';
+            const preliminaryScore = hasRubric ? rubricScore : parsedModelScore;
+            const finalScore = offTopic ? Math.min(1, preliminaryScore) : preliminaryScore;
+            const normalizedRecommendation = normalizeRecommendation(result.recommendation, finalScore);
+
+            const shortFeedback =
+                typeof result.short_feedback === 'string' && result.short_feedback.trim().length > 0
+                    ? result.short_feedback.trim()
+                    : typeof result.feedback === 'string' && result.feedback.trim().length > 0
+                    ? result.feedback.trim()
+                    : finalScore >= 7
+                    ? 'Die Kernidee ist korrekt, aber ein wichtiger Punkt fehlt noch.'
+                    : 'Die Antwort passt noch nicht präzise zur Frage.';
+
+            const improvement =
+                typeof result.improvement === 'string' && result.improvement.trim().length > 0
+                    ? result.improvement.trim()
+                    : offTopic
+                    ? 'Beantworte direkt den Kernbegriff der Frage und nenne einen klaren Unterschied.'
+                    : 'Ergänze genau den fehlenden Kernpunkt und formuliere ihn in einem klaren Satz.';
 
             return NextResponse.json({
                 feedback: {
                     type: 'supportive',
-                    message: result.feedback ?? 'Gute Richtung. Erklär es noch einmal mit deinen eigenen Worten.',
+                    shortFeedback,
+                    improvement,
+                    score: finalScore,
+                    content,
+                    completeness,
+                    understanding,
+                    clarity,
                     recommendation: normalizedRecommendation,
-                    grading: { enabled: false },
+                    grading: { enabled: true },
                 },
                 userAnswer: userAnswer,
                 modelAnswer: question.answer,
