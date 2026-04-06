@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PLAN_LIMITS, normalizePlan, type PlanTier, type SubscriptionStatus } from "@/lib/account-plans";
+import { resolveOrCreateSessionUser } from "@/lib/session-user";
 import { getSpeechUsageSeconds, resolveDateKeyFromOffset } from "@/lib/speech-usage";
 import { billing, getPricingCards } from "@/src/config/billing";
 import {
@@ -46,22 +47,10 @@ type DashboardPayload = {
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const session = await auth();
-    const userId = session?.user?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-      },
-    });
+    const user = await resolveOrCreateSessionUser(session?.user);
 
     if (!user) {
-      return NextResponse.json({ error: "Account nicht gefunden" }, { status: 404 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const decksCreated = await db.deck.count({

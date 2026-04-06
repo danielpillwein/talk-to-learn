@@ -18,7 +18,7 @@ import {
 
 function toDisplayStats(
   learningStage: "intro" | "scaffolded" | "free",
-  cards: Array<{ seen: boolean }>,
+  cards: Array<{ seen: boolean; hasScaffoldedExplanation: boolean }>,
   progress: Array<{ status: string }>
 ) {
   if (learningStage === "intro") {
@@ -29,6 +29,27 @@ function toDisplayStats(
       known,
       learning,
       new: unseen,
+    };
+  }
+
+  if (learningStage === "scaffolded") {
+    // In scaffolded mode, progress should reflect scaffold completion,
+    // not carry over intro "known" as already mastered.
+    const explainedCount = cards.reduce(
+      (acc, card) => (card.hasScaffoldedExplanation ? acc + 1 : acc),
+      0
+    );
+    const learningCount = progress.reduce(
+      (acc, item) => (item.status === "learning" ? acc + 1 : acc),
+      0
+    );
+    const clampedLearning = Math.max(0, Math.min(learningCount, cards.length - explainedCount));
+    const newCount = Math.max(0, cards.length - explainedCount - clampedLearning);
+
+    return {
+      known: explainedCount,
+      learning: clampedLearning,
+      new: newCount,
     };
   }
 

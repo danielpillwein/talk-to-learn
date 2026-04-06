@@ -139,6 +139,7 @@ const SETTINGS_NAV: Array<{ id: SectionId; label: string; mobileLabel: string }>
 const MOBILE_TABS_TOP_OFFSET = 72;
 const MOBILE_TAB_BAR_FALLBACK_HEIGHT = 52;
 const MOBILE_SECTION_SCROLL_EXTRA = 10;
+let lastDashboardLoadErrorToastAt = 0;
 
 function formatEuroPrice(value: number): string {
   return new Intl.NumberFormat("de-DE", {
@@ -251,6 +252,9 @@ export function AccountDashboardClient({
   image,
 }: DashboardClientProps): JSX.Element {
   const toast = useToast();
+  const toastSuccess = toast.success;
+  const toastError = toast.error;
+  const toastInfo = toast.info;
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
@@ -272,6 +276,7 @@ export function AccountDashboardClient({
   });
   const revealTimersRef = useRef<number[]>([]);
   const mobileTabsSentinelRef = useRef<HTMLDivElement | null>(null);
+  const handledCheckoutQueryRef = useRef<string | null>(null);
 
   const clearRevealTimers = useCallback(() => {
     revealTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
@@ -344,15 +349,85 @@ export function AccountDashboardClient({
         );
       }
     } catch {
-      toast.error("Abo-Daten konnten nicht geladen werden", "Bitte erneut versuchen.");
+      const now = Date.now();
+      if (now - lastDashboardLoadErrorToastAt > 1500) {
+        lastDashboardLoadErrorToastAt = now;
+        toastError("Abo-Daten konnten nicht geladen werden", "Bitte erneut versuchen.");
+      }
     } finally {
       setIsLoadingDashboard(false);
     }
-  }, [clearRevealTimers, toast]);
+  }, [clearRevealTimers, toastError]);
 
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const checkoutState = String(url.searchParams.get("checkout") ?? "").trim().toLowerCase();
+    const sessionId = String(url.searchParams.get("session_id") ?? "").trim();
+    if (!checkoutState) return;
+
+    const marker = `${checkoutState}:${sessionId}`;
+    if (handledCheckoutQueryRef.current === marker) return;
+    handledCheckoutQueryRef.current = marker;
+
+    const clearCheckoutParams = () => {
+      const next = new URL(window.location.href);
+      next.searchParams.delete("checkout");
+      next.searchParams.delete("session_id");
+      const target = `${next.pathname}${next.search}${next.hash}`;
+      window.history.replaceState(null, "", target);
+    };
+
+    if (checkoutState === "cancelled") {
+      toastInfo("Checkout abgebrochen", "Der Kaufvorgang wurde nicht abgeschlossen.");
+      clearCheckoutParams();
+      return;
+    }
+
+    if (checkoutState !== "success" || !sessionId) {
+      clearCheckoutParams();
+      return;
+    }
+
+    const verifyCheckout = async () => {
+      try {
+        const response = await fetch(`/api/billing/checkout-status?session_id=${encodeURIComponent(sessionId)}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error || "Checkout-Status konnte nicht geprüft werden.");
+        }
+
+        const payload = (await response.json().catch(() => null)) as
+          | { checkoutStatus?: string; synced?: boolean }
+          | null;
+        const checkoutStatusValue = String(payload?.checkoutStatus ?? "").trim().toLowerCase();
+
+        if (payload?.synced) {
+          toastSuccess("Upgrade erfolgreich", "Dein Abo wurde aktiviert.");
+        } else if (checkoutStatusValue === "complete") {
+          toastSuccess("Checkout abgeschlossen", "Zahlung bestätigt. Abo wird synchronisiert.");
+        } else {
+          toastInfo("Checkout wird verarbeitet", "Bitte aktualisiere die Seite in ein paar Sekunden erneut.");
+        }
+
+        await loadDashboard();
+      } catch (error) {
+        toastError(
+          "Checkout-Verifizierung fehlgeschlagen",
+          error instanceof Error ? error.message : "Bitte später erneut versuchen."
+        );
+      } finally {
+        clearCheckoutParams();
+      }
+    };
+
+    void verifyCheckout();
+  }, [loadDashboard, toastError, toastInfo, toastSuccess]);
 
   useEffect(() => {
     return () => {
@@ -479,14 +554,14 @@ export function AccountDashboardClient({
         window.location.assign(url);
       }
     } catch (error) {
-      toast.error(
+      toastError(
         "Billing Portal nicht verfügbar",
         error instanceof Error ? error.message : "Bitte später erneut versuchen."
       );
     } finally {
       setIsOpeningPortal(false);
     }
-  }, [toast]);
+  }, [toastError]);
 
   const runDangerAction = useCallback(
     async (action: DangerActionKind) => {
@@ -517,17 +592,17 @@ export function AccountDashboardClient({
         }
 
         if (action === "reset_progress") {
-          toast.success("Fortschritt zurückgesetzt", "Alle Lernfortschritte wurden gelöscht.");
+          toastSuccess("Fortschritt zurückgesetzt", "Alle Lernfortschritte wurden gelöscht.");
         }
 
         if (action === "delete_decks") {
-          toast.success("Lernsets gelöscht", "Alle Lernsets wurden dauerhaft gelöscht.");
+          toastSuccess("Lernsets gelöscht", "Alle Lernsets wurden dauerhaft gelöscht.");
         }
 
         setPendingAction(null);
         await loadDashboard();
       } catch (error) {
-        toast.error(
+        toastError(
           "Aktion fehlgeschlagen",
           error instanceof Error ? error.message : "Bitte später erneut versuchen."
         );
@@ -535,7 +610,7 @@ export function AccountDashboardClient({
         setIsRunningDangerAction(false);
       }
     },
-    [loadDashboard, toast]
+    [loadDashboard, toastError, toastSuccess]
   );
 
   const updateSubscriptionCancellation = useCallback(
@@ -554,13 +629,13 @@ export function AccountDashboardClient({
         }
 
         if (action === "cancel") {
-          toast.success(
+          toastSuccess(
             "Abo gekündigt",
             dashboard?.billing.text.subscription.cancelled ?? "Abo wurde gekündigt."
           );
           setPendingAction(null);
         } else {
-          toast.success(
+          toastSuccess(
             "Kündigung rückgängig gemacht",
             dashboard?.billing.text.subscription.resumed ?? "Abo läuft weiter."
           );
@@ -568,7 +643,7 @@ export function AccountDashboardClient({
 
         await loadDashboard();
       } catch (error) {
-        toast.error(
+        toastError(
           "Aktion fehlgeschlagen",
           error instanceof Error ? error.message : "Bitte später erneut versuchen."
         );
@@ -576,7 +651,7 @@ export function AccountDashboardClient({
         setIsUpdatingSubscription(false);
       }
     },
-    [dashboard?.billing.text.subscription.cancelled, dashboard?.billing.text.subscription.resumed, loadDashboard, toast]
+    [dashboard?.billing.text.subscription.cancelled, dashboard?.billing.text.subscription.resumed, loadDashboard, toastError, toastSuccess]
   );
 
   const startCheckout = useCallback(
@@ -605,7 +680,7 @@ export function AccountDashboardClient({
 
         window.location.assign(url);
       } catch (error) {
-        toast.error(
+        toastError(
           "Checkout fehlgeschlagen",
           error instanceof Error ? error.message : "Bitte später erneut versuchen."
         );
@@ -613,7 +688,7 @@ export function AccountDashboardClient({
         setIsCreatingCheckout(false);
       }
     },
-    [billingCycle, toast]
+    [billingCycle, toastError]
   );
 
   const handleConfirmAction = async () => {

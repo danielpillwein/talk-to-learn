@@ -644,6 +644,40 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/billing/checkout-status:
+    get:
+      tags: [Billing]
+      summary: Stripe Checkout Session verifizieren und Abo synchronisieren
+      operationId: getCheckoutStatus
+      parameters:
+        - in: query
+          name: session_id
+          required: true
+          schema:
+            type: string
+          description: Stripe Checkout Session ID (`cs_...`).
+      responses:
+        '200':
+          description: Checkout-Status geladen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          description: Session gehört nicht zum authentifizierten User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /api/stripe/portal-session:
     post:
       tags: [Stripe]
@@ -1628,6 +1662,19 @@ components:
           enum: [monthly, yearly]
         configuredPrice:
           type: number
+
+    CheckoutStatusResponse:
+      type: object
+      required: [checkoutStatus, paymentStatus]
+      properties:
+        checkoutStatus:
+          type: string
+        paymentStatus:
+          type: [string, 'null']
+        synced:
+          type: boolean
+        subscription:
+          $ref: '#/components/schemas/StripeSubscriptionSnapshot'
 
     StripePortalSessionResponse:
       type: object

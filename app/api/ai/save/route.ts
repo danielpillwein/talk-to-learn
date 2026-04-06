@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { resolvePlanForUserId, resolveQuestionCountLimitForPlan } from "@/lib/account-plans";
 import { db } from "@/lib/db";
+import { resolveOrCreateSessionUser } from "@/lib/session-user";
 
 type CardPayload = { question: string; answer: string };
 
@@ -19,7 +20,8 @@ function buildSourceFilename(params: { title: string; fileName: string | null })
 
 export async function POST(request: Request): Promise<NextResponse> {
   const session = await auth();
-  if (!session?.user?.id) {
+  const user = await resolveOrCreateSessionUser(session?.user);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -28,7 +30,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const cards = (body.cards as CardPayload[] | undefined) ?? [];
   const fileName = String(body.fileName ?? "").trim();
   const hasUploadedSource = fileName.length > 0;
-  const plan = await resolvePlanForUserId(session.user.id);
+  const plan = await resolvePlanForUserId(user.id);
   const maxQuestionCount = resolveQuestionCountLimitForPlan(plan);
 
   if (!title || cards.length === 0) {
@@ -47,7 +49,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const deck = await db.deck.create({
     data: {
       title,
-      ownerId: session.user.id,
+      ownerId: user.id,
       sourceFilename: buildSourceFilename({
         title,
         fileName: hasUploadedSource ? fileName : null,

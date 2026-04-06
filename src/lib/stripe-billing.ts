@@ -29,7 +29,13 @@ function mapStripeStatus(subscription: Stripe.Subscription): SubscriptionStatus 
   if (subscription.cancel_at_period_end) {
     return "cancel_at_period_end";
   }
-  if (subscription.status === "past_due" || subscription.status === "unpaid") {
+  if (
+    subscription.status === "past_due" ||
+    subscription.status === "unpaid" ||
+    subscription.status === "incomplete" ||
+    subscription.status === "incomplete_expired" ||
+    subscription.status === "paused"
+  ) {
     return "past_due";
   }
   return "active";

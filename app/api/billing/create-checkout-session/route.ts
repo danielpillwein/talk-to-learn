@@ -92,7 +92,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${appUrl}/app/account?checkout=success#abo`,
+      success_url: `${appUrl}/app/account?checkout=success&session_id={CHECKOUT_SESSION_ID}#abo`,
       cancel_url: `${appUrl}/app/account?checkout=cancelled#abo`,
       metadata: {
         userId: user.id,

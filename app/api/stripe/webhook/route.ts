@@ -32,6 +32,33 @@ async function retrieveExpandedSubscription(subscriptionId: string): Promise<Str
   });
 }
 
+async function hasWebhookEventTable(): Promise<boolean> {
+  try {
+    const rows = await db.$queryRawUnsafe<Array<{ name: string }>>(`PRAGMA table_info("StripeWebhookEvent")`);
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function markEventAsProcessing(event: Stripe.Event): Promise<boolean> {
+  try {
+    await db.$executeRawUnsafe(
+      `INSERT INTO "StripeWebhookEvent" ("id","type","createdAt")
+       VALUES (?, ?, CURRENT_TIMESTAMP)`,
+      event.id,
+      event.type
+    );
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("UNIQUE constraint failed")) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 async function findUserByStripeRefs(params: {
   userId?: string | null;
   customerId?: string | null;
@@ -122,6 +149,27 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
   });
 }
 
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
+  const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : null;
+  if (!subscriptionId) return;
+
+  const customerId =
+    typeof invoice.customer === "string"
+      ? invoice.customer
+      : invoice.customer?.id ?? null;
+  const user = await findUserByStripeRefs({
+    subscriptionId,
+    customerId,
+    email: invoice.customer_email,
+  });
+  if (!user) return;
+
+  const subscription = await retrieveExpandedSubscription(subscriptionId);
+  await persistSubscriptionForUser(user.id, subscription, {
+    fallbackPlan: normalizePlan(user.plan),
+  });
+}
+
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
   const customerId =
     typeof subscription.customer === "string"
@@ -182,14 +230,33 @@ export async function POST(request: Request): Promise<Response> {
       return new Response(null, { status: 200 });
     }
 
+    if (await hasWebhookEventTable()) {
+      const shouldProcess = await markEventAsProcessing(event);
+      if (!shouldProcess) {
+        return new Response(null, { status: 200 });
+      }
+    }
+
     switch (event.type) {
       case "checkout.session.completed":
+        await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+        break;
+      case "checkout.session.async_payment_succeeded":
+        await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+        break;
+      case "checkout.session.async_payment_failed":
         await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
         break;
       case "invoice.paid":
         await handleInvoicePaid(event.data.object as Stripe.Invoice);
         break;
+      case "invoice.payment_failed":
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
       case "customer.subscription.updated":
+      case "customer.subscription.created":
+      case "customer.subscription.paused":
+      case "customer.subscription.resumed":
         await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
         break;
       case "customer.subscription.deleted":

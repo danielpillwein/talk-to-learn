@@ -83,11 +83,17 @@ interface ProgressResponse {
 }
 
 interface StageNotice {
-    title: string;
-    description: string;
+    headline: string;
+    status: string;
+    bullets: [string, string, string];
+    ctaLabel: string;
+    progressLabel: string;
+    otterMessage: string;
 }
 
 const REVIEW_TRANSITION_MS = 180;
+const INTRO_PRIMARY_ACTION_LABEL = 'Verstanden';
+const INTRO_REVIEW_ACTION_LABEL = 'Nochmal üben';
 
 function resolveStageFromProgress(payload: {
     learningPhase: 'intro' | 'scaffolded' | 'free';
@@ -193,12 +199,50 @@ export default function LearnDetailPage(): JSX.Element {
     const [showTranscript, setShowTranscript] = useState(false);
     const [isSubmittingProgress, setIsSubmittingProgress] = useState(false);
     const [stageNotice, setStageNotice] = useState<StageNotice | null>(null);
-    const [decisionFeedback, setDecisionFeedback] = useState<null | 'known' | 'review'>(null);
+    const [isQuestionTransitionLoading, setIsQuestionTransitionLoading] = useState(false);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingStartedAtRef = useRef<number | null>(null);
     const srManagerRef = useRef<SpacedRepetitionManager | null>(null);
+    const confettiTimeoutRef = useRef<number | null>(null);
+
+    const playLevelUpConfetti = useCallback(async () => {
+        const confettiModule = await import('canvas-confetti');
+        const confetti = confettiModule.default;
+        confetti({
+            particleCount: 70,
+            spread: 55,
+            angle: 58,
+            startVelocity: 50,
+            origin: { x: 0.03, y: 0.98 },
+        });
+        confetti({
+            particleCount: 70,
+            spread: 55,
+            angle: 122,
+            startVelocity: 50,
+            origin: { x: 0.97, y: 0.98 },
+        });
+
+        confettiTimeoutRef.current = window.setTimeout(() => {
+            confetti({
+                particleCount: 55,
+                spread: 70,
+                angle: 62,
+                startVelocity: 44,
+                origin: { x: 0.04, y: 0.98 },
+            });
+            confetti({
+                particleCount: 55,
+                spread: 70,
+                angle: 118,
+                startVelocity: 44,
+                origin: { x: 0.96, y: 0.98 },
+            });
+            confettiTimeoutRef.current = null;
+        }, 220);
+    }, []);
 
     const updateQuestionState = useCallback((questionIndex: number, patch: Partial<Question>) => {
         setQuestions((prev) =>
@@ -269,6 +313,14 @@ export default function LearnDetailPage(): JSX.Element {
 
         loadQuestions();
     }, [deckId, toast]);
+
+    useEffect(() => {
+        return () => {
+            if (confettiTimeoutRef.current !== null) {
+                window.clearTimeout(confettiTimeoutRef.current);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && (window as any).MathJax) {
@@ -447,30 +499,41 @@ Danach wirst du schrittweise zum aktiven Erklären geführt.`
         setShowTranscript(false);
 
         if (previousStage === 'intro' && nextStage === 'scaffolded') {
+            void playLevelUpConfetti();
             setStageNotice({
-                title: 'nächste Lernstufe freigeschalten: Üben',
-                description: `Du kennst jetzt alle Karten des Lernsets.
-Zeit zu zeigen, was du gelernt hast.
-
-Aber keine Sorge, wir werfen dich nicht ins kalte Wasser:
-Du siehst die Antworten weiterhin und kannst es in eigenen Worten erklären :)`,
+                headline: 'Level Up!',
+                status: 'Üben freigeschaltet',
+                bullets: [
+                    'Du erklärst jetzt aktiv in deinen eigenen Worten.',
+                    'Die Musterlösung bleibt als Orientierung sichtbar.',
+                    'Dein Fortschritt steigt mit jeder klaren Antwort.',
+                ],
+                ctaLabel: 'Jetzt üben',
+                progressLabel: 'Level 2 von 3',
+                otterMessage: 'Starker Fortschritt. Weiter geht’s.',
             });
         } else if (previousStage === 'scaffolded' && nextStage === 'free') {
             setStageNotice({
-                title: 'nächste Lernstufe freigeschalten: Erklären',
-                description: `Zeit, das Ganze aufs nächste Level zu heben.
-Ab jetzt werden dir nur noch die Fragen angezeigt.
-Die Antworten solltest du mittlerweile kennen ;)`,
+                headline: 'Level Up!',
+                status: 'Erklären freigeschaltet',
+                bullets: [
+                    'Ab jetzt siehst du nur noch die Frage.',
+                    'Du rufst Wissen frei aus dem Gedächtnis ab.',
+                    'Das ist die stärkste Form von aktivem Lernen.',
+                ],
+                ctaLabel: 'Jetzt erklären',
+                progressLabel: 'Level 3 von 3',
+                otterMessage: 'Der Otter sagt: Sehr stark, jetzt kommt freies Abrufen.',
             });
         } else {
             setStageNotice(null);
         }
-    }, []);
+    }, [playLevelUpConfetti]);
 
     const handleIntroNext = useCallback(async () => {
         if (currentQuestionId === null || !deckId || isSubmittingProgress) return;
         setIsSubmittingProgress(true);
-        setDecisionFeedback('known');
+        setIsQuestionTransitionLoading(true);
 
         try {
             const previousStage = learningStage;
@@ -480,21 +543,20 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                 action: 'mark_seen',
                 questionId: currentQuestionId,
             });
-            await new Promise((resolve) => setTimeout(resolve, REVIEW_TRANSITION_MS));
             applyProgressResponse(data, previousStage);
         } catch (err) {
             toast.error('Fortschritt konnte nicht gespeichert werden.', 'Bitte versuche es erneut.');
             console.error(err);
         } finally {
             setIsSubmittingProgress(false);
-            setDecisionFeedback(null);
+            setIsQuestionTransitionLoading(false);
         }
     }, [currentQuestionId, deckId, isSubmittingProgress, learningStage, postProgress, applyProgressResponse, updateQuestionState, toast]);
 
     const handleIntroReviewLater = useCallback(async () => {
         if (currentQuestionId === null || !deckId || isSubmittingProgress) return;
         setIsSubmittingProgress(true);
-        setDecisionFeedback('review');
+        setIsQuestionTransitionLoading(true);
 
         try {
             const previousStage = learningStage;
@@ -504,14 +566,13 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                 action: 'intro_review_later',
                 questionId: currentQuestionId,
             });
-            await new Promise((resolve) => setTimeout(resolve, REVIEW_TRANSITION_MS));
             applyProgressResponse(data, previousStage);
         } catch (err) {
             toast.error('Konnte nicht für später markiert werden.', 'Bitte versuche es erneut.');
             console.error(err);
         } finally {
             setIsSubmittingProgress(false);
-            setDecisionFeedback(null);
+            setIsQuestionTransitionLoading(false);
         }
     }, [currentQuestionId, deckId, isSubmittingProgress, learningStage, postProgress, applyProgressResponse, updateQuestionState, toast]);
 
@@ -545,9 +606,7 @@ Die Antworten solltest du mittlerweile kennen ;)`,
         if (!srManagerRef.current || currentQuestionId === null) return;
         if (reviewLoading) return;
         setReviewLoading(type);
-        if (type === 'known' || type === 'review') {
-            setDecisionFeedback(type);
-        }
+        setIsQuestionTransitionLoading(true);
 
         let usedServer = false;
         try {
@@ -563,7 +622,6 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                 questionId: currentQuestionId,
                 outcome: type,
             });
-            await new Promise((resolve) => setTimeout(resolve, REVIEW_TRANSITION_MS));
             applyProgressResponse(data, previousStage);
             usedServer = true;
         } catch (err) {
@@ -575,7 +633,6 @@ Die Antworten solltest du mittlerweile kennen ;)`,
             else if (type === 'review') srManagerRef.current.markAsReview(currentQuestionId);
             else srManagerRef.current.markAsWrong(currentQuestionId);
 
-            await new Promise((resolve) => setTimeout(resolve, REVIEW_TRANSITION_MS));
             const nextId = srManagerRef.current.getNextQuestion();
             setCurrentQuestionId(nextId);
             setStats(srManagerRef.current.getStats());
@@ -583,8 +640,9 @@ Die Antworten solltest du mittlerweile kennen ;)`,
             setKnownUnknownRevealed(false);
         }
 
+        await new Promise((resolve) => setTimeout(resolve, REVIEW_TRANSITION_MS));
         setReviewLoading(null);
-        setDecisionFeedback(null);
+        setIsQuestionTransitionLoading(false);
     }, [currentQuestionId, deckId, reviewLoading, learningStage, postProgress, applyProgressResponse, updateQuestionState]);
 
     const isSupportiveDecisionVisible =
@@ -757,45 +815,52 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                         <Card className="border-border bg-card shadow-sm">
                             <CardContent className="space-y-5 p-6">
                                 <h2 className="deck-question text-2xl font-semibold leading-tight text-foreground">
-                                    {questionText}
+                                    {isQuestionTransitionLoading ? (
+                                        <span className="block space-y-2">
+                                            <span className="skeleton block h-8 w-full rounded-md" />
+                                            <span className="skeleton block h-8 w-3/4 rounded-md" />
+                                        </span>
+                                    ) : (
+                                        questionText
+                                    )}
                                 </h2>
                                 <hr className="-mx-6 border-border" />
                                 <div>
                                     <h3 className="intro-label text-sm font-medium text-muted-foreground">Musterlösung</h3>
-                                    <p className="intro-text mt-2 text-base leading-relaxed text-foreground">{answerText}</p>
+                                    <div className="intro-text mt-2 text-base leading-relaxed text-foreground">
+                                        {isQuestionTransitionLoading ? (
+                                            <div className="space-y-2">
+                                                <div className="skeleton h-5 w-full rounded-md" />
+                                                <div className="skeleton h-5 w-11/12 rounded-md" />
+                                                <div className="skeleton h-5 w-4/5 rounded-md" />
+                                            </div>
+                                        ) : (
+                                            answerText
+                                        )}
+                                    </div>
                                 </div>
                                 {!stageNotice && !result && (
                                     <div className="pt-1">
-                                        <div className="grid gap-2 sm:grid-cols-2">
+                                        <div className="flex flex-wrap gap-2">
                                             <Button
                                                 onClick={handleIntroNext}
-                                                aria-label="Ich kann das"
-                                                className="h-10 w-full rounded-xl px-4 text-sm"
+                                                aria-label={INTRO_PRIMARY_ACTION_LABEL}
+                                                className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
                                                 disabled={isSubmittingProgress}
                                             >
                                                 <CheckIconSolid className="h-4 w-4 shrink-0" />
-                                                <span>Ich kann das</span>
+                                                <span>{INTRO_PRIMARY_ACTION_LABEL}</span>
                                             </Button>
                                             <Button
                                                 onClick={handleIntroReviewLater}
-                                                aria-label="Später nochmal zeigen"
+                                                aria-label={INTRO_REVIEW_ACTION_LABEL}
                                                 variant="outline"
-                                                className="h-10 w-full rounded-xl px-4 text-sm"
+                                                className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
                                                 disabled={isSubmittingProgress}
                                             >
                                                 <ArrowPathIcon className="h-4 w-4 shrink-0" />
-                                                <span>Später nochmal zeigen</span>
+                                                <span>{INTRO_REVIEW_ACTION_LABEL}</span>
                                             </Button>
-                                        </div>
-                                        <div className="mt-2 min-h-6 text-xs text-muted-foreground">
-                                            {decisionFeedback === 'known' ? (
-                                                <span className="inline-flex items-center gap-1 text-success">
-                                                    <span>✓</span>
-                                                    <span>Karte abgeschlossen</span>
-                                                </span>
-                                            ) : decisionFeedback === 'review' ? (
-                                                <span>Diese Karte erscheint gleich noch einmal.</span>
-                                            ) : null}
                                         </div>
                                     </div>
                                 )}
@@ -805,7 +870,14 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                         <Card className="border-border bg-card shadow-sm">
                             <CardContent className="space-y-5 p-6">
                                 <h2 className="deck-question text-2xl font-semibold leading-tight text-foreground">
-                                    {questionText}
+                                    {isQuestionTransitionLoading ? (
+                                        <span className="block space-y-2">
+                                            <span className="skeleton block h-8 w-full rounded-md" />
+                                            <span className="skeleton block h-8 w-3/4 rounded-md" />
+                                        </span>
+                                    ) : (
+                                        questionText
+                                    )}
                                 </h2>
 
                                 {cardMode === 'scaffolded' && result?.mode === 'supportive' ? (
@@ -836,9 +908,17 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                                             <hr className="-mx-6 border-border" />
                                             <div>
                                                 <h3 className="text-sm font-medium text-muted-foreground">Musterlösung</h3>
-                                                <p className="mt-2 max-h-52 overflow-y-auto pr-1 text-sm leading-relaxed text-foreground">
-                                                    {answerText}
-                                                </p>
+                                                <div className="mt-2 max-h-52 overflow-y-auto pr-1 text-sm leading-relaxed text-foreground">
+                                                    {isQuestionTransitionLoading ? (
+                                                        <div className="space-y-2">
+                                                            <div className="skeleton h-4 w-full rounded-md" />
+                                                            <div className="skeleton h-4 w-11/12 rounded-md" />
+                                                            <div className="skeleton h-4 w-4/5 rounded-md" />
+                                                        </div>
+                                                    ) : (
+                                                        answerText
+                                                    )}
+                                                </div>
                                             </div>
                                             <div>
                                                 <Button
@@ -867,7 +947,17 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                                             <hr className="-mx-6 border-border" />
                                             <div>
                                                 <h3 className="text-sm font-medium text-muted-foreground">Musterlösung</h3>
-                                                <p className="mt-2 text-base leading-relaxed text-foreground">{answerText}</p>
+                                                <div className="mt-2 text-base leading-relaxed text-foreground">
+                                                    {isQuestionTransitionLoading ? (
+                                                        <div className="space-y-2">
+                                                            <div className="skeleton h-5 w-full rounded-md" />
+                                                            <div className="skeleton h-5 w-11/12 rounded-md" />
+                                                            <div className="skeleton h-5 w-4/5 rounded-md" />
+                                                        </div>
+                                                    ) : (
+                                                        answerText
+                                                    )}
+                                                </div>
                                             </div>
                                         </>
                                     )
@@ -949,17 +1039,18 @@ Die Antworten solltest du mittlerweile kennen ;)`,
 
                     {stageNotice || cardMode === 'intro' || !result ? null : result.mode === 'supportive' ? (
                         <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4">
-                            <div className="grid gap-2 md:grid-cols-2">
+                            <div className="flex flex-wrap gap-2">
                                 <Button
                                     onClick={() => handleReview('known')}
                                     variant="default"
                                     disabled={reviewLoading !== null}
                                     isLoading={reviewLoading === 'known'}
                                     loadingText="Speichere"
-                                    className="h-10 w-full rounded-xl px-4 text-sm"
+                                    aria-label={INTRO_PRIMARY_ACTION_LABEL}
+                                    className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
                                 >
                                     <CheckIconSolid className="h-4 w-4 shrink-0" />
-                                    <span>Ich kann das</span>
+                                    <span>{INTRO_PRIMARY_ACTION_LABEL}</span>
                                 </Button>
                                 <Button
                                     onClick={() => handleReview('review')}
@@ -967,21 +1058,12 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                                     disabled={reviewLoading !== null}
                                     isLoading={reviewLoading === 'review'}
                                     loadingText="Speichere"
-                                    className="h-10 w-full rounded-xl px-4 text-sm"
+                                    aria-label={INTRO_REVIEW_ACTION_LABEL}
+                                    className="h-10 w-full rounded-xl px-4 text-sm sm:w-auto sm:min-w-[11.5rem]"
                                 >
                                     <ArrowPathIcon className="h-4 w-4 shrink-0" />
-                                    <span>Später nochmal zeigen</span>
+                                    <span>{INTRO_REVIEW_ACTION_LABEL}</span>
                                 </Button>
-                            </div>
-                            <div className="min-h-6 text-xs text-muted-foreground">
-                                {decisionFeedback === 'known' ? (
-                                    <span className="inline-flex items-center gap-1 text-success">
-                                        <span>✓</span>
-                                        <span>Karte abgeschlossen</span>
-                                    </span>
-                                ) : decisionFeedback === 'review' ? (
-                                    <span>Diese Karte erscheint gleich noch einmal.</span>
-                                ) : null}
                             </div>
                         </div>
                     ) : (
@@ -1077,24 +1159,49 @@ Die Antworten solltest du mittlerweile kennen ;)`,
                 </div>
 
                 {stageNotice && (
-                    <div className="fixed inset-x-0 bottom-0 top-24 z-50 flex items-center justify-center bg-background p-4">
-                        <div className="relative mt-16 w-full max-w-2xl md:mt-20">
-                            <Image
-                                src="/mascot/otter-celebration.png"
-                                alt="Otter feiert den Lernfortschritt"
-                                width={480}
-                                height={480}
-                                className="absolute bottom-full left-1/2 mb-[-41px] h-56 w-56 -translate-x-1/2 object-contain md:mb-[-58px] md:h-80 md:w-80"
-                                priority
-                            />
-                            <Card className="w-full border-2 border-info/50 bg-info/20 shadow-sm">
-                                <CardContent className="space-y-4 p-6 text-center md:p-8">
-                                    <h2 className="text-2xl font-semibold text-foreground">{stageNotice.title}</h2>
-                                    <p className="whitespace-pre-line text-base leading-relaxed text-foreground/90">
-                                        {stageNotice.description}
-                                    </p>
-                                    <Button onClick={() => setStageNotice(null)} className="h-10 px-6 text-sm">
-                                        Ich bin ready
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/35 p-4 backdrop-blur-sm">
+                        <div className="relative w-auto max-w-[calc(100vw-2rem)]">
+                            <Card className="inline-block overflow-hidden rounded-2xl border border-white/10 bg-background text-[#eef6ee]">
+                                <CardContent className="space-y-5 p-5 sm:p-6">
+                                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
+                                        <div className="space-y-4 md:max-w-[30rem]">
+                                            <div className="flex items-center gap-3">
+                                                <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/80">
+                                                    {stageNotice.progressLabel}
+                                                </span>
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <h2 className="text-3xl font-extrabold leading-none tracking-tight text-white">{stageNotice.headline}</h2>
+                                                <p className="text-lg font-semibold leading-tight text-white/90">{stageNotice.status}</p>
+                                            </div>
+
+                                            <ul className="space-y-2">
+                                                {stageNotice.bullets.map((item) => (
+                                                    <li key={item} className="flex items-start gap-2.5 text-sm leading-snug text-white/80">
+                                                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white/45" />
+                                                        <span>{item}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                            <p className="text-sm text-white/85">{stageNotice.otterMessage}</p>
+                                        </div>
+                                        <div className="flex justify-center md:justify-end">
+                                            <Image
+                                                src="/mascot/otter-celebration.png"
+                                                alt="Otter feiert den Fortschritt"
+                                                width={260}
+                                                height={260}
+                                                className="h-40 w-40 object-contain sm:h-44 sm:w-44 md:h-56 md:w-56"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <Button
+                                        onClick={() => setStageNotice(null)}
+                                        className="h-11 w-full rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/95"
+                                    >
+                                        {stageNotice.ctaLabel}
                                     </Button>
                                 </CardContent>
                             </Card>
