@@ -69,7 +69,7 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
 
     if (hasLearningStageUpdate) {
       if (!["intro", "scaffolded", "free"].includes(learningStage)) {
-        return NextResponse.json({ error: "Ungültige Lernstufe" }, { status: 400 });
+        return NextResponse.json({ error: "Ungültiges Level" }, { status: 400 });
       }
 
       await db.$transaction(async (tx) => {

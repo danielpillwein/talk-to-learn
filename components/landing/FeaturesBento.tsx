@@ -241,7 +241,7 @@ function FeatureCardAudio(): JSX.Element {
 function FeatureCardModel(): JSX.Element {
   return (
     <FeatureCardMedium
-      title="Lernen in drei Stufen"
+      title="Lernen in drei Leveln"
       description="Vom Verstehen zum freien Erklären."
       visualClassName="border-0 bg-muted/45"
     >

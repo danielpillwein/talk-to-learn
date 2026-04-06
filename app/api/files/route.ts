@@ -90,20 +90,43 @@ export async function GET(): Promise<NextResponse> {
             const learning = progress?.learning ?? 0;
             const total = deck._count.cards;
             const pendingScaffoldCount = scaffoldPendingCountByDeck[deck.id] ?? 0;
+            const introSeen = seenCountByDeck[deck.id] ?? 0;
 
             const learningPhaseStatus =
                 !deck.hasBeenIntroduced || deck.learningPhase === 'intro'
                     ? 'intro'
                     : deck.learningPhase === 'free'
                     ? 'free'
-                    : pendingScaffoldCount > 0 || known < total
+                    : pendingScaffoldCount > 0 || !(learning === 0 && known === total)
                     ? 'scaffolded'
                     : 'free';
 
-            const introKnown = seenCountByDeck[deck.id] ?? 0;
-            const effectiveKnown = learningPhaseStatus === 'intro' ? introKnown : known;
-            const effectiveLearning = learningPhaseStatus === 'intro' ? 0 : learning;
-            const effectiveNew = Math.max(0, total - effectiveKnown - effectiveLearning);
+            const introUnseen = Math.max(0, total - introSeen);
+            const introLearning = Math.max(0, Math.min(learning, introSeen));
+            const introKnown = Math.max(0, total - introUnseen - introLearning);
+
+            const scaffoldedKnown = Math.max(0, total - pendingScaffoldCount);
+            const scaffoldedLearning = Math.max(0, Math.min(learning, total - scaffoldedKnown));
+            const scaffoldedNew = Math.max(0, total - scaffoldedKnown - scaffoldedLearning);
+
+            const effectiveKnown =
+                learningPhaseStatus === 'intro'
+                    ? introKnown
+                    : learningPhaseStatus === 'scaffolded'
+                    ? scaffoldedKnown
+                    : known;
+            const effectiveLearning =
+                learningPhaseStatus === 'intro'
+                    ? introLearning
+                    : learningPhaseStatus === 'scaffolded'
+                    ? scaffoldedLearning
+                    : learning;
+            const effectiveNew =
+                learningPhaseStatus === 'intro'
+                    ? introUnseen
+                    : learningPhaseStatus === 'scaffolded'
+                    ? scaffoldedNew
+                    : Math.max(0, total - known - learning);
 
             return {
                 id: deck.id,

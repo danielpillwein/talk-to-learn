@@ -31,9 +31,9 @@ const DEFAULT_ITEMS: FaqEntry[] = [
       "Die KI prüft Korrektheit, Vollständigkeit und Verständlichkeit deiner Erklärung. Danach bekommst du klare Hinweise und eine Referenzantwort zum Vergleichen.",
   },
   {
-    question: "Welche Lernstufen gibt es beim Üben?",
+    question: "Welche Level gibt es beim Üben?",
     answer:
-      "Je nach Lernfortschritt arbeitest du in unterschiedlichen Stufen, z. B. Einstieg, geführtes Erklären und freies Erklären. So wirst du schrittweise sicherer im aktiven Abruf.",
+      "Je nach Lernfortschritt arbeitest du in unterschiedlichen Leveln, z. B. Einstieg, geführtes Erklären und freies Erklären. So wirst du schrittweise sicherer im aktiven Abruf.",
   },
   {
     question: "Welche Features helfen mir beim Lernen am meisten?",

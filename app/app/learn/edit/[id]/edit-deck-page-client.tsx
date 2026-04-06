@@ -136,11 +136,11 @@ function EditDeckDetailsSkeleton(): JSX.Element {
         </section>
 
         <section className="space-y-3">
-          <label className="text-[13px] text-muted-foreground opacity-70">Lernstufe</label>
+          <label className="text-[13px] text-muted-foreground opacity-70">Level</label>
           <div className="flex flex-wrap items-center gap-2">
             <div className="skeleton h-10 w-28 rounded-full" />
             <span className="inline-flex h-9 items-center rounded-md border border-border/70 bg-muted/35 px-3 text-sm text-muted-foreground">
-              Lernstufe ändern
+              Level ändern
             </span>
           </div>
           <div className="skeleton skeleton-text long" />
@@ -500,7 +500,7 @@ export default function EditDeckPage(): JSX.Element {
       if (stageChanged) {
         setSavedLearningStage(learningStage);
         setLearningStageDraft(learningStage);
-        toast.success("Lernstufe geändert", "Die Lernstufe wurde erfolgreich übernommen.");
+        toast.success("Level geändert", "Das Level wurde erfolgreich übernommen.");
       }
 
       if (contentChanged) {
@@ -515,7 +515,7 @@ export default function EditDeckPage(): JSX.Element {
       console.error(err);
       setError("Speichern fehlgeschlagen.");
       if (stageChanged) {
-        toast.error("Lernstufe ändern fehlgeschlagen", "Die neue Lernstufe konnte nicht übernommen werden.");
+        toast.error("Level ändern fehlgeschlagen", "Das neue Level konnte nicht übernommen werden.");
       } else if (contentChanged) {
         toast.error("Speichern fehlgeschlagen", "Beim Speichern ist ein Fehler aufgetreten.");
       }
@@ -546,15 +546,15 @@ export default function EditDeckPage(): JSX.Element {
       setLearningStageDraft(stage);
       setIsLearningStageEditorOpen(false);
       if (mode === "set") {
-        toast.success("Lernstufe geändert", "Die Lernstufe wurde erfolgreich übernommen.");
+        toast.success("Level geändert", "Das Level wurde erfolgreich übernommen.");
       } else {
-        toast.success("Fortschritt zurückgesetzt", "Der Fortschritt wurde auf dieser Lernstufe zurückgesetzt.");
+        toast.success("Fortschritt zurückgesetzt", "Der Fortschritt wurde auf diesem Level zurückgesetzt.");
       }
       await refreshProgress(deckId);
     } catch (err) {
       console.error(err);
       if (mode === "set") {
-        toast.error("Lernstufe ändern fehlgeschlagen", "Die neue Lernstufe konnte nicht übernommen werden.");
+        toast.error("Level ändern fehlgeschlagen", "Das neue Level konnte nicht übernommen werden.");
       } else {
         toast.error("Fortschritt zurücksetzen fehlgeschlagen", "Der Fortschritt konnte nicht zurückgesetzt werden.");
       }
@@ -921,7 +921,7 @@ export default function EditDeckPage(): JSX.Element {
             <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-lg">
               <h3 className="text-base font-semibold text-foreground">Fortschritt zurücksetzen?</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Der Fortschritt dieser Lernstufe wird auf den Anfang zurückgesetzt.
+                Der Fortschritt dieses Levels wird auf den Anfang zurückgesetzt.
               </p>
               <div className="mt-4 flex flex-col gap-2">
                 <Button variant="outline" onClick={handleCancelResetProgress} className="w-full whitespace-normal">
@@ -1022,10 +1022,10 @@ export default function EditDeckPage(): JSX.Element {
             <section className="space-y-3">
               <div className="flex items-center gap-1.5">
                 <label className="text-[13px] text-muted-foreground opacity-70">
-                  Lernstufe
+                  Level
                 </label>
                 <InfoTooltip
-                  title="So funktionieren die Lernstufen"
+                  title="So funktionieren die Level"
                   description={`1) Einführung: Frage + Lösung sehen
 2) Üben: Lösung in eigenen Worten erklären
 3) Erklären: nur mit der Frage erklären`}
@@ -1061,7 +1061,7 @@ export default function EditDeckPage(): JSX.Element {
                       onClick={handleOpenLearningStageEditor}
                       disabled={isLoading || isApplyingLearningStage || isDeletingDeck || isSaving}
                     >
-                      Lernstufe ändern
+                      Level ändern
                     </Button>
                   </div>
                 </div>
@@ -1069,7 +1069,7 @@ export default function EditDeckPage(): JSX.Element {
                 <div className="space-y-3">
                   <fieldset
                     role="radiogroup"
-                    aria-label="Lernstufe auswählen"
+                    aria-label="Level auswählen"
                     className="space-y-2"
                     disabled={isLoading || isApplyingLearningStage || isDeletingDeck || isSaving}
                   >
@@ -1120,13 +1120,13 @@ export default function EditDeckPage(): JSX.Element {
                       loadingText="Übernehme"
                       disabled={isLoading || isApplyingLearningStage || isDeletingDeck || isSaving}
                     >
-                      Lernstufe speichern
+                      Level speichern
                     </Button>
                   </div>
                 </div>
               )}
               <p className="text-[13px] text-muted-foreground opacity-70">
-                Beim Ändern der Lernstufe wird der Fortschritt der Karten zurückgesetzt.
+                Beim Ändern des Levels wird der Fortschritt der Karten zurückgesetzt.
               </p>
             </section>
 

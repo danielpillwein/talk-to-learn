@@ -352,6 +352,25 @@ export default function LearnIndexPage(): JSX.Element {
     }, [fetchFiles]);
 
     useEffect(() => {
+        const refresh = () => {
+            void fetchFiles(false);
+        };
+
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                refresh();
+            }
+        };
+
+        window.addEventListener('focus', refresh);
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => {
+            window.removeEventListener('focus', refresh);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
+    }, [fetchFiles]);
+
+    useEffect(() => {
         const handle = window.setTimeout(() => {
             setSearchTerm(searchInput.trim());
         }, 300);
@@ -607,7 +626,7 @@ export default function LearnIndexPage(): JSX.Element {
                                                 <span className={`inline-flex h-10 items-center rounded-[999px] px-4 text-sm ${phaseMeta.className}`}>
                                                     <span>{phaseMeta.label}</span>
                                                     <InfoTooltip
-                                                        title="So funktionieren die Lernstufen"
+                                                        title="So funktionieren die Level"
                                                         description={`1) Einführung: Frage + Lösung sehen
 2) Üben: Lösung in eigenen Worten erklären
 3) Erklären: nur mit der Frage erklären`}
